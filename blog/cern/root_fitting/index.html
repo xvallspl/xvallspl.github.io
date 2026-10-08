@@ -2,7 +2,7 @@
 <html lang="en-us">
 
 <head>
-  <title>Parallelization of the fit | Xavier Valls Pla</title>
+  <title>Vectorizing and parallelizing ROOT&#39;s fits | Xavier Valls Pla</title>
 
   <meta charset="UTF-8">
   <meta name="language" content="en">
@@ -46,8 +46,8 @@
             "@id": "http:\/\/xvallspl.github.io\/"
       },
       "articleSection" : "blog",
-      "name" : "Parallelization of the fit",
-      "headline" : "Parallelization of the fit",
+      "name" : "Vectorizing and parallelizing ROOT\u0027s fits",
+      "headline" : "Vectorizing and parallelizing ROOT\u0027s fits",
       "description" : "",
       "inLanguage" : "en-US",
       "author" : "",
@@ -101,7 +101,7 @@
       <div class="post__container">
         <div class="post">
           <header class="post__header">
-            <h1 id="post__title">Parallelization of the fit</h1>
+            <h1 id="post__title">Vectorizing and parallelizing ROOT&#39;s fits</h1>
             <time datetime="2019-09-19 10:05:51 &#43;0200 CEST" class="post__date">Sep 19 2019</time> 
           </header>
           <article class="post__content">
@@ -109,7 +109,7 @@
 <section class="warning_block"> <p>This article is part of a series that I'm slowly publishing, and it still has several broken links referencing unpublished articles.</p></section>
 <p>Fitting of data distributions is one of the most demanding and computing-intensive activities when performing data analysis on the results of the LHC.</p>
 <p>In order to take full advantage of new computer architectures, and to maintain or even improve performance with increasing amounts of data to analyze, parallelization and vectorization have been introduced in the ROOT mathematical and statistical libraries.</p>
-<p>The tools for parallelism described in <a href="/blog/cern/tlp/">Task-level parallelism</a> and <a href="/blog/cern/dlp/">Data-level parallelism</a> can be applied together when parallelizing the minimization process for solving fitting problems. As a result of the substantial work done on developing and integrating these parallelization tools in ROOT, vectorization and parallelization have been introduced in ROOT's fitting interfaces, requiring minimal changes in user code. To improve the speed up, ROOT's main fitting methods, introduced in Section <a href="#61-fitting-fundamentals">6.1</a>, have been parallelized both at data-level (Section <a href="#63-vectorization">6.3</a>) and task-level (Section <a href="#64-multiprocessing-and-multithreading">6.4</a>).</p>
+<p>The tools for parallelism described in <a href="/blog/cern/tlp/">ROOT&#39;s executors</a> and <a href="/blog/cern/dlp/">SIMD in ROOT</a> can be applied together when parallelizing the minimization process for solving fitting problems. As a result of the substantial work done on developing and integrating these parallelization tools in ROOT, vectorization and parallelization have been introduced in ROOT's fitting interfaces, requiring minimal changes in user code. To improve the speed up, ROOT's main fitting methods, introduced in Section <a href="#61-fitting-fundamentals">6.1</a>, have been parallelized both at data-level (Section <a href="#63-vectorization">6.3</a>) and task-level (Section <a href="#64-multiprocessing-and-multithreading">6.4</a>).</p>
 <p>We report on the improvements obtained by adding support for SIMD vectorization and multithreaded parallelization in the function evaluation with a typical example from HEP data analysis. In Section <a href="#65-case-example-a-typical-fit">6.5</a>, we show how the different evaluations of the likelihood and the least square functions used for fitting ROOT histograms and datasets represented by ROOT trees perform for this case.</p>
 <h2 id="61-fitting-fundamentals">6.1 Fitting fundamentals<a class="anchor" href="#61-fitting-fundamentals">#</a></h2>
 <p>Fitting is one of the most recurrent and fundamental operations in HEP, as it provides valuable information about the distribution of the observed data. In this section we introduce the foundations of likelihood fitting, introducing the concepts of likelihood and likelihood function, and focusing on two methods to estimate the parameters that maximize the likelihood function: maximum likelihood and least squares.</p>
@@ -169,8 +169,8 @@
 <p>We have developed a padding mechanism in order to avoid loading wrong memory addresses into SIMD arrays, i.e. filling the empty positions of the SIMD array with the last data element if the remaining data to load is less than the SIMD vector size. The choice of filling with the last data element is not arbitrary: it is a requisite for the padding to be composed of values that guarantee safe evaluations. This avoids invalid operations (e.g. dividing by zero when padding with the default value for the type) and guarantees that the operation to be performed will be correct. This padding mechanism has been implemented for the coordinates, and for the values and the error in the case of binned data representations.</p>
 <h3 id="633-vectorization-of-root-math-interfaces">Vectorization of ROOT Math interfaces<a class="anchor" href="#633-vectorization-of-root-math-interfaces">#</a></h3>
 <p>ROOT Math interfaces to functions and numerical algorithms have been designed to accept only double precision types. Instead of adding extra overloads to be able to operate with SIMD arrays, we decided to template all fitting and function interfaces, retaining the existing classes as an alias of the new templated ones instantiated on double. The structure of the function interfaces in ROOT prior to their templatization gives a sense of the complexity of this task: a dense web of inheritance between the fitting classes, the minimizer classes, and the gradient and parametric function interfaces, which all needed to carry a SIMD type parameter through every layer without breaking existing user code.</p>
-<p>VecCore is the SIMD library of choice to express vectorization in ROOT, for the reasons explained in <a href="/blog/cern/dlp/#52-veccore">Data-level parallelism</a>. We leverage VecCore types to specify the new type <code>ROOT::Double_v</code> that allows us to work with SIMD types inside ROOT and expose them for user-specified functions.</p>
-<p>Once we obtain the user function, we provide full compatibility with most of the old scripts. This means that, in order to benefit from a vectorized evaluation of the fitting, users will only need to vectorize their function, which in some cases may only require changing the data and return type. The user can also easily create vectorized functions by using TMath methods or TFormula (see <a href="/blog/cern/executor_applications/#tformula">Performance studies</a>) instances.</p>
+<p>VecCore is the SIMD library of choice to express vectorization in ROOT, for the reasons explained in <a href="/blog/cern/dlp/#52-veccore">SIMD in ROOT</a>. We leverage VecCore types to specify the new type <code>ROOT::Double_v</code> that allows us to work with SIMD types inside ROOT and expose them for user-specified functions.</p>
+<p>Once we obtain the user function, we provide full compatibility with most of the old scripts. This means that, in order to benefit from a vectorized evaluation of the fitting, users will only need to vectorize their function, which in some cases may only require changing the data and return type. The user can also easily create vectorized functions by using TMath methods or TFormula (see <a href="/blog/cern/executor_applications/#tformula">Putting ROOT&#39;s parallel tools to the test</a>) instances.</p>
 <p>In order to achieve this backward compatibility, and as a fundamental class of the fitting process, we also developed templated overloads of the TF1 function type constructors, and implemented the necessary internal mechanisms for evaluation on SIMD types, as discussed in <a href="/blog/cern/dlp/#53-generating-julia-fractals-with-tf1">Generating Julia fractals with TF1</a>.</p>
 <h2 id="64-multiprocessing-and-multithreading">6.4 Multiprocessing and multithreading<a class="anchor" href="#64-multiprocessing-and-multithreading">#</a></h2>
 <p>Our task-level parallelization of the fitting process targets the loop over the data elements in each one of the fitting functions. This approach requires making all the invoked functions within the loop body scope thread-safe, removing all dependencies on previous iterations, and adapting the code to the interface provided by TExecutor.</p>
@@ -344,7 +344,7 @@
 <p>Observing Figure 6.7, we find out that icc 17 performs a more aggressive auto-vectorization than the other compilers, matching the explicitly vectorized times. For a fairer comparison, avoiding autovectorization when compiling, the results between compilers are similar, with icc slightly outperformed by clang and gcc, and all three compilers continue to track each other closely as the number of threads increases.</p>
 <h2 id="66-conclusions">6.6 Conclusions<a class="anchor" href="#66-conclusions">#</a></h2>
 <p>In this chapter we demonstrate that, with the appropriate tools, we can exploit parallelism at several levels when fitting models in ROOT and, at the same time, preserve the user interfaces. We have shown how, as a result, the users can now vectorize and parallelize their original code and profit from a significant speedup.</p>
-<p>We described the necessary changes to improve the performance of the vectorization introduced for <a href="/blog/cern/dlp/">Data-level parallelism</a>, from structuring our data in a Structure of Arrays to achieve data alignment, to providing safety mechanisms, such as that described for the padding. In addition, we applied the knowledge obtained from the <a href="/blog/cern/tlp/#46-task-granularity-analysis">task granularity analysis</a> to define a heuristic that contributes to balancing the parallel workload. Finally, we parallelized the evaluation of the different objective functions by deploying the executors and adapting the processing of the event loop to a MapReduce model.</p>
+<p>We described the necessary changes to improve the performance of the vectorization introduced for <a href="/blog/cern/dlp/">SIMD in ROOT</a>, from structuring our data in a Structure of Arrays to achieve data alignment, to providing safety mechanisms, such as that described for the padding. In addition, we applied the knowledge obtained from the <a href="/blog/cern/tlp/#46-task-granularity-analysis">task granularity analysis</a> to define a heuristic that contributes to balancing the parallel workload. Finally, we parallelized the evaluation of the different objective functions by deploying the executors and adapting the processing of the event loop to a MapReduce model.</p>
 <p>We utilized a real use case to benchmark the parallelization at task-level (multithreading) and data-level of the unbinned maximum likelihood, the Poisson likelihood and the least-square methods, on individual evaluations and on a complete fitting process for each of the objective functions.</p>
 <p>Results differ between objective functions, but in all the benchmarked cases we obtained good acceleration factors when vectorizing, and remarkable ones when parallelizing at task-level. The combination of both task-level and data-level parallelism produces the best results, and both speed up and execution times are consistent across compilers.</p>
 <section class="footnotes" role="doc-endnotes">
@@ -382,14 +382,14 @@
   
     <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/dlp/">
         <span class="pagination__label">Previous Post</span>
-        <span class="pagination__title">Data-level parallelism</span>
+        <span class="pagination__title">SIMD in ROOT: introducing VecCore</span>
     </a>
   
 
   
     <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/executor_applications/">
       <span class="pagination__label">Next Post</span>
-      <span class="pagination__title" >Performance studies</a>
+      <span class="pagination__title" >Putting ROOT&#39;s parallel tools to the test</a>
     </a>
   
 </div>

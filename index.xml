@@ -53,7 +53,7 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
-      <title>Automatization of Techlab&#39;s Request Management Process</title>
+      <title>Automatizing Techlab&#39;s Request Management Process</title>
       <link>http://xvallspl.github.io/blog/cern/rms/</link>
       <pubDate>Sat, 21 Dec 2019 09:12:19 +0200</pubDate>
       
@@ -63,7 +63,7 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
-      <title>Performance studies</title>
+      <title>Putting ROOT&#39;s parallel tools to the test</title>
       <link>http://xvallspl.github.io/blog/cern/executor_applications/</link>
       <pubDate>Thu, 24 Oct 2019 16:28:19 +0200</pubDate>
       
@@ -73,7 +73,7 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
-      <title>Parallelization of the fit</title>
+      <title>Vectorizing and parallelizing ROOT&#39;s fits</title>
       <link>http://xvallspl.github.io/blog/cern/root_fitting/</link>
       <pubDate>Thu, 19 Sep 2019 10:05:51 +0200</pubDate>
       
@@ -83,7 +83,7 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
-      <title>Data-level parallelism</title>
+      <title>SIMD in ROOT: introducing VecCore</title>
       <link>http://xvallspl.github.io/blog/cern/dlp/</link>
       <pubDate>Thu, 29 Aug 2019 14:40:07 +0200</pubDate>
       
@@ -93,7 +93,7 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
-      <title>Task-level parallelism</title>
+      <title>ROOT&#39;s executors: scaling task-level parallelism</title>
       <link>http://xvallspl.github.io/blog/cern/tlp/</link>
       <pubDate>Thu, 18 Jul 2019 11:15:32 +0200</pubDate>
       

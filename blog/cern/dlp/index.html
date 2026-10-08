@@ -2,7 +2,7 @@
 <html lang="en-us">
 
 <head>
-  <title>Data-level parallelism | Xavier Valls Pla</title>
+  <title>SIMD in ROOT: introducing VecCore | Xavier Valls Pla</title>
 
   <meta charset="UTF-8">
   <meta name="language" content="en">
@@ -48,8 +48,8 @@
             "@id": "http:\/\/xvallspl.github.io\/"
       },
       "articleSection" : "blog",
-      "name" : "Data-level parallelism",
-      "headline" : "Data-level parallelism",
+      "name" : "SIMD in ROOT: introducing VecCore",
+      "headline" : "SIMD in ROOT: introducing VecCore",
       "description" : "",
       "inLanguage" : "en-US",
       "author" : "",
@@ -103,7 +103,7 @@
       <div class="post__container">
         <div class="post">
           <header class="post__header">
-            <h1 id="post__title">Data-level parallelism</h1>
+            <h1 id="post__title">SIMD in ROOT: introducing VecCore</h1>
             <time datetime="2019-08-29 14:40:07 &#43;0200 CEST" class="post__date">Aug 29 2019</time> 
           </header>
           <article class="post__content">
@@ -247,7 +247,7 @@ LISTING3
 <p>In addition, we developed TF1 further with new features such as new constructors for <code>std::function</code> types and the possibility to evaluate over scalar data types (<code>double</code>) when the function that TF1 has been built on is vectorizable. In this case, we fill the entire SIMD array with the scalar value, operate with it, and return only one of the (identical) values of the resulting SIMD array.</p>
 <p>Our benchmark also serves to measure the adaption of a user function with more than two parameters to the TF1 interfaces. TF1 is a parametric function with strict interfaces, allowing as its only parameters a pointer to the data and a pointer to the parameters needed for the evaluation of the user function. This limitation is frequently overcome by wrapping the user function in a C++ functor, packing the parameters in an array of double when calling the TF1, and unpacking them after forwarding the call to the user provided functor. This operation adds a slight overhead in the packing/unpacking process and to the call forwarding.</p>
 <p>The benchmark was run on an Intel Core i7-4790 desktop server with 4 physical cores (8 logical threads) at 3.6 GHz and 8 GB of RAM, executed with AVX2 as set of SIMD instructions and compiled with gcc 6.2. The functor adaption and TF1 wrapping adds a small overhead in all cases, and VecCore's scalar backend essentially matches the performance attained by the original code, including performing several masking operations as a consequence of conditional branching (Section <a href="#51-vectorization">5.1</a>). Finally, we observe a fair speed up when vectorizing, considering the complexity of the problem at hand: the scalar evaluation of the functor-wrapped function takes around 136 ns per call, VecCore's scalar backend matches it at around 131 ns, and switching to the vectorized <code>ROOT::Double_v</code> backend brings the cost down to around 52 ns per call &mdash; evaluating several points of the fractal in the time it previously took to evaluate one.</p>
-<p>We further benchmark the performance of TF1 in the <a href="/blog/cern/executor_applications/#73-vectorization-of-mathematical-formulas-compiled-at-runtime">Performance studies</a> article of this series, where we compare the single call performance of TF1 built with a free function and TFormula, the formula class in ROOT, with their vectorized counterparts.</p>
+<p>We further benchmark the performance of TF1 in the <a href="/blog/cern/executor_applications/#73-vectorization-of-mathematical-formulas-compiled-at-runtime">Putting ROOT&#39;s parallel tools to the test</a> article of this series, where we compare the single call performance of TF1 built with a free function and TFormula, the formula class in ROOT, with their vectorized counterparts.</p>
 <h2 id="54-conclusions">5.4 Conclusions<a class="anchor" href="#54-conclusions">#</a></h2>
 <p>We introduced data-level parallelism in ROOT by capitalizing on the advantages oﬀered by the VecCore library and its backends in terms of programming model and performance. By oﬀering an extra abstraction layer on top of its exchangeable backends, VecCore provides eﬃcient vectorization with an improved yet simpler programming model that, among other benefits, allows for better portability with the development of architecture-oblivious code.</p>
 <p>We benchmarked VecCore's performance extensively with a complex example, the computation of diﬀerent Julia sets. We evaluated the generation of Julia sets on two diﬀerent floating point types, float and double; two diﬀerent computers, a desktop server and a Xeon Phi; two diﬀerent VecCore backends, Vc and UME::SIMD; three diﬀerent compilers, icc 17, gcc 7.2 and clang 5; and three diﬀerent instruction sets, SSE2 (desktop server and Xeon Phi), AVX2 (desktop server and Xeon Phi) and AVX512 (Xeon Phi).</p>
@@ -291,14 +291,14 @@ LISTING3
   
     <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/tlp/">
         <span class="pagination__label">Previous Post</span>
-        <span class="pagination__title">Task-level parallelism</span>
+        <span class="pagination__title">ROOT&#39;s executors: scaling task-level parallelism</span>
     </a>
   
 
   
     <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/root_fitting/">
       <span class="pagination__label">Next Post</span>
-      <span class="pagination__title" >Parallelization of the fit</a>
+      <span class="pagination__title" >Vectorizing and parallelizing ROOT&#39;s fits</a>
     </a>
   
 </div>
