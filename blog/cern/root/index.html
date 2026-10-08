@@ -369,8 +369,8 @@ model but offloading many components of PROOF which are not needed for
 single node execution (such as network connectivity). In addition,
 depending on the nature of the problem, users might benefit from using
 ROOT’s MapReduce facility for multi-process analysis in single node,
-TProcessExecutor<sup id="fnref:12"><a href="#fn:12" class="footnote-ref" role="doc-noteref">12</a></sup> (Section <a href="blog/CERN/tlp#tprocessexecutor">TProcessExecutor</a>
-from the Task Level Parallelism in ROOT article), the multiprocess implementation of the
+TProcessExecutor<sup id="fnref:12"><a href="#fn:12" class="footnote-ref" role="doc-noteref">12</a></sup> (Section <a href="/blog/cern/tlp/#tprocessexecutor">TProcessExecutor</a>
+from the Task-level parallelism article), the multiprocess implementation of the
 executors’ programming model.</p>
 <h3 id="32-executors-a-new-set-of-tools-for-expressing-parallelism-in-root">3.2 Executors: A new set of tools for expressing parallelism in ROOT<a class="anchor" href="#32-executors-a-new-set-of-tools-for-expressing-parallelism-in-root">#</a></h3>
 <p>It is often possible to identify repetitive tasks and frequently applied
@@ -397,11 +397,11 @@ awareness, parallel reduction and very low task overhead.</p>
 </li>
 </ul>
 <p>The executor model has proved to be successful and has been applied
-throughout ROOT as well as in standalone utilities such as hadd (see <a href="blog/CERN/executor_applications#hadd">the hadd</a> section in the Performance studies article of this series). It yields large speed up gains, especially in the most
+throughout ROOT as well as in standalone utilities such as hadd (see <a href="/blog/cern/executor_applications/#hadd">the hadd</a> section in the Performance studies article of this series). It yields large speed up gains, especially in the most
 performance-critical operations, such as parallel reading of TTree
 branches (intra-event or inter-event) or parallel merging of buffers
 before writing. These executors are described in more detail in the article
-<a href="blog/CERN/tlp">Task Level Parallelism in ROOT</a>.</p>
+<a href="/blog/cern/tlp/">Task-level parallelism</a>.</p>
 <h3 id="33-implicit-and-explicit-multithreading">3.3 Implicit and explicit multithreading<a class="anchor" href="#33-implicit-and-explicit-multithreading">#</a></h3>
 <p>Parallel computing is usually considered challenging and complex, but it
 is unavoidable in today’s computer architectures when aiming for high
@@ -434,7 +434,7 @@ been invested to adapt ROOT’s libraries to leverage implicit
 multithreading, and users are encouraged to prefer it over explicit
 parallelization. Nevertheless, the two options are not
 interface-exclusive, and, in some of the cases, for example when
-performing a fit (See section <a href="#"> </a>), for user convenience,
+performing a fit (See section <a href="/blog/cern/root_fitting/#implicit-explicit-fit">Multiprocessing and multithreading</a>), for user convenience,
 flexibility or interface coherency, both implicit and explicit
 parallelism are offered.</p>
 <h3 id="34-vectorization">3.4 Vectorization<a class="anchor" href="#34-vectorization">#</a></h3>
@@ -470,9 +470,9 @@ compilation process, VecCore is the only library explicitly used in
 ROOT, and enabling it allows users to benefit from features such as the
 new ROOT types relying on VecCore to perform SIMD operations; the
 support for functions built with these ROOT SIMD types in TF1 (Section
-<a href="blog/CERN/dlp#tf1">TF1</a> in the Data-level parallelism in ROOT article); the vectorized evaluation of the fitting given a
-vectorized TF1 (see the <a href="blog/CERN/root_fitting"> Parallelization of the Fit in Root</a> article of this series); or the compilation at runtime
-of vectorized functions thanks to TFormula (section <a href="blog/CERN/executor_applications#tformula">TFormula</a> section in the Performance studies article of this series).</p>
+<a href="/blog/cern/dlp/#tf1">TF1</a> in the Data-level parallelism article); the vectorized evaluation of the fitting given a
+vectorized TF1 (see the <a href="/blog/cern/root_fitting/"> Parallelization of the fit</a> article of this series); or the compilation at runtime
+of vectorized functions thanks to TFormula (section <a href="/blog/cern/executor_applications/#tformula">TFormula</a> section in the Performance studies article of this series).</p>
 <h2 id="4-mathematical-libraries">4. Mathematical libraries<a class="anchor" href="#4-mathematical-libraries">#</a></h2>
 <p>Analyzing a large amount of complex data, such as that gathered by the
 LHC experiments, requires advanced mathematical and statistical
@@ -566,7 +566,7 @@ is composed of five main components: the user function model, the
 fitting data, the fitting method, the fitter and the minimizer.</p>
 <p>The signature of the model function provided by the user should be
 compatible with the parametric function interface callable operator in
-ROOT, and it is provided via a function class in ROOT, e.g. <a href="blog/CERN/dlp#tf1">TF1</a>. To allow that the fitting method function classes interface
+ROOT, and it is provided via a function class in ROOT, e.g. <a href="/blog/cern/dlp/#tf1">TF1</a>. To allow that the fitting method function classes interface
 with it, the ROOT class representing the model function needs to be
 wrapped in a class that implements the parametric function interface.
 The type of the data to fit, also specified by the user, is identified
@@ -591,7 +591,7 @@ implemented on the most important ROOT object classes, such as
 histograms, graphs and trees (Listing 4.1, Figure
 4.2). More information about the fitting, as well as the
 modifications implemented to parallelize the fitting process, both at
-task-level and at data-level, are provided in the article <a href="blog/CERN/root_fitting">Parallelization of the Fit in Root</a>.</p>
+task-level and at data-level, are provided in the article <a href="/blog/cern/root_fitting/">Parallelization of the fit</a>.</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"> std<span style="color:#ff79c6">::</span>unique_ptr<span style="color:#ff79c6">&lt;</span>TF1<span style="color:#ff79c6">&gt;</span> f1(<span style="color:#f1fa8c">&#34;f1&#34;</span>, <span style="color:#f1fa8c">&#34;gaus&#34;</span>);
  f1<span style="color:#ff79c6">-&gt;</span>SetParameters(<span style="color:#bd93f9">1</span>, <span style="color:#bd93f9">0</span>, <span style="color:#bd93f9">1</span>);
 
@@ -945,9 +945,9 @@ AliEVE<sup id="fnref:21"><a href="#fn:21" class="footnote-ref" role="doc-noteref
   
 
   
-    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/rms/">
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/tlp/">
       <span class="pagination__label">Next Post</span>
-      <span class="pagination__title" >Automatization of Techlab&#39;s Request Management Process</a>
+      <span class="pagination__title" >Task-level parallelism</a>
     </a>
   
 </div>

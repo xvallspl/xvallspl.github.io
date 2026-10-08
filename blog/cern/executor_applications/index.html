@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>Performance studies | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+
+
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+
+
+
+
+
+
+
+
+
+
+
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+
+
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+
+
+
+
+
+
+<script type="application/ld+json">
+
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "Performance studies",
+      "headline" : "Performance studies",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2019",
+      "datePublished": "2019-10-24 16:28:19 +0200 CEST",
+      "dateModified" : "2019-10-24 16:28:19 +0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/executor_applications\/",
+      "wordCount" : "4328",
+      "keywords" : ["Blog"]
+    }
+
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+
+
+      <li>
+        <a  href="/">about</a>
+      </li>
+
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+
+  </ul>
+</nav>
+
+
+  <main>
+
+
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">Performance studies</h1>
+            <time datetime="2019-10-24 16:28:19 &#43;0200 CEST" class="post__date">Oct 24 2019</time>
+          </header>
+          <article class="post__content">
+
+<section class="warning_block"> <p>This article is part of a series that I'm slowly publishing, and it still has several broken links referencing unpublished articles.</p></section>
+<p>The parallel tools and libraries described throughout this series yield signiﬁcant performance improvements for ROOT and align with its ongoing modernization eﬀort. These tools have been extensively deployed throughout ROOT: training of Deep Neural Networks, parallel merging of ﬁles, parallel processing of ROOT trees, vectorizing the ﬁt, vectorizing mathematical functions and user-deﬁned formulas, parallel writing of histograms, parallel evaluation of the event loop in RDataFrame, and so on.</p>
+<p>This article serves as a showcase for some of the performance improvements granted by the utilities for parallelism at task-level and data-level introduced in the previous articles of the series. Section <a href="#71-merging-of-root-files">7.1</a> describes the improvements obtained when parallelizing ROOT&#39;s standalone tool for merging ROOT ﬁles, <code>hadd</code>, using the multiprocess executor of ROOT, TProcessExecutor. In Section <a href="#72-parallel-analysis-in-rdataframe">7.2</a>, we introduce a code exploring a potential model of new Physics, and we benchmark the performance of its RDataFrame implementation against the original ad-hoc highly optimized version of the same code. Finally, Section <a href="#73-vectorization-of-mathematical-formulas-compiled-at-runtime">7.3</a> compares and reports on the performance of vectorizing mathematical functions at runtime via TFormula.</p>
+<h2 id="71-merging-of-root-files">7.1 Merging of ROOT files<a class="anchor" href="#71-merging-of-root-files">#</a></h2>
+<span id="hadd"></span>
+<p>Merging ROOT ﬁles is a common but expensive operation. ROOT oﬀers a tool for this purpose, <code>hadd</code>, that could beneﬁt from parallelization. Concretely, <code>hadd</code> is a standalone application distributed with ROOT whose objective is to merge several ROOT ﬁles containing ROOT trees or histograms into a new ﬁle, by exploiting the <code>Merge()</code> method of these classes and ROOT&#39;s ﬁle-managing utilities, e.g. <code>TFileMerger</code><sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>.</p>
+<p>This is an easily parallelizable procedure, for instance, by relying on recursive hierarchical merging. The most obvious implementation is to perform the merge following a binary tree structure: each node of the tree constitutes a task that merges two ﬁles into one, and these tasks are computed concurrently. Parallelizing the merging of the ROOT ﬁles in this way would grant a potential speed up in the number of merges of</p>
+<p style="text-align:center"><em>S<sub>u</sub></em> = n / (2<sup>log<sub>2</sub>n &minus; log<sub>2</sub>m</sup> &minus; 1) = mn / (n &minus; m),</p>
+<p>where the sequential tree for n = 2<sup>k+1</sup> ﬁles has n &minus; 1 nodes, or binary merge operations, and m = 2<sup>i</sup> is the number of parallel processing elements.</p>
+<p>Nevertheless, real world problems are seldom this perfect. For instance, the number of ﬁles may not be a power of two, and then the shape of the tree does not correspond to that of a full binary tree. In addition, the number of processing units may not be a divisor of the number of ﬁles, and, in that case, it is better performance-wise to distribute the ﬁles such that the leaf operations do not constitute a binary merge.</p>
+<p>Due to the particularities of the <code>Merge()</code> operation in ROOT, in which a collection of ROOT objects is merged into the ﬁrst element of the collection, the full combination of the objects requires n &minus; 1 merges for n ﬁles. With n ﬁles distributed among the m processing units, and each one of the leaves of the tree performing a sequential merge of the ﬁles it was assigned, the potential acceleration factor that we can obtain in the number of merges is:</p>
+<p style="text-align:center"><em>S<sub>u</sub></em> = (n &minus; 1) / ((n + m &minus; 1)/m &minus; m + log<sub>2</sub>m).</p>
+<p>However, while merging in a binary tree is theoretically the most eﬃcient option, in practice, the overhead caused by the implementation of a partial binary ﬁle merging operation, and the limitations of the I/O subsystem (opening a ﬁle, creating a ﬁle merger, writing results on disk), make this option less practical. Instead, we adopt a two-step MapReduce<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup> solution where we distribute the ﬁles uniformly between the p workers, and then we perform partial reduction in each of the workers (&quot;greedy&quot; reduce), only to reduce these partial results one last time to obtain the ﬁnal result.</p>
+<p>The theoretical maximum speedup that we can obtain when merging ﬁles in two steps is governed by the equation</p>
+<p style="text-align:center"><em>S<sub>u</sub></em> = n(n &minus; 1) / (n/m + m &minus; 2),</p>
+<p>where n is the number of items to process and m is the number of processing workers.</p>
+<p>We developed this last solution in a parallel MapReduce implementation of <code>hadd</code>, relying on the multiprocess executor of ROOT, TProcessExecutor<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup>, for merging ROOT objects stored in ROOT ﬁles. Without changing the original user interface, the command remains as simple as:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash"><span style="color: #6272A4"># Merge 48 histogram files using a 4-worker TProcessExecutor-backed hadd</span>
+hadd<span style="color: #F8F8F2"> </span>-j<span style="color: #F8F8F2"> </span><span style="color: #FFB86C">4</span><span style="color: #F8F8F2"> </span>merged.root<span style="color: #F8F8F2"> </span>input_*.root
+</code></pre></div><p><em><strong>Listing 7.1</strong>: Invoking the parallel, MapReduce-based implementation of <code>hadd</code> with 4 worker processes.</em></p>
+<p>Most frequently, a ROOT ﬁle contains data in either ROOT trees or ROOT histograms. We test the parallel merging of histogram ﬁles with a ﬁle from the oﬃcial CMS data quality monitoring repository, a real case with around 12.5 MB of hundreds of histograms in a complex hierarchy of directories, which should result in a large workload. We merge in parallel the same ﬁle duplicated N times for balancing purposes, on an Intel Core i7-4790 desktop server with 4 physical cores (8 logical threads) at 3.6 GHz and 8 GB of RAM<sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup>, measured with the standard high resolution clock of C++ and each measurement averaged over several executions.</p>
+<figure>
+    <img src="/media/executor_applications/Times4-4.png"
+         alt="Parallelizing hadd"/> <figcaption>
+            <p><em><strong>Figure 7.1</strong>: Time to merge an increasing number of histogram files: sequential execution, 4-core/4-process parallel execution, and the theoretical ideal parallel time.</em></p>
+        </figcaption>
+</figure>
+<p>Figure 7.1 shows that the time needed for the sequential merge grows rapidly with the number of ﬁles, while the parallel execution stays close to the ideal curve. By default, TProcessExecutor deploys as many workers as logical cores&mdash;in this case 8&mdash;which, as we observe next, does not positively aﬀect performance.</p>
+<figure>
+    <img src="/media/executor_applications/SpeedUps.png"
+         alt="Speed up merging with hadd"/> <figcaption>
+            <p><em><strong>Figure 7.2</strong>: Speed up merging with hadd a different number of ROOT files containing histograms, with an increasing number of processes. The dashed horizontal line marks the theoretical maximum speed up for the available machine cores.</em></p>
+        </figcaption>
+</figure>
+<p>Figure 7.2 compares the speed up obtained for a varying number of ﬁles against the number of processes used and the reference maximum speed up for the available cores. We notice that, when the number of ﬁles increases, the speed up rapidly approaches and even exceeds the naive core-count reference, as larger workloads amortize the ﬁxed cost of worker creation and ﬁle-opening overhead better. We can also observe that going beyond the number of physical cores (4, in this machine) by using the 8 logical threads does not translate into a proportional improvement, and in some cases it even hurts performance, conﬁrming that the extra logical threads do not provide additional effective throughput for this I/O-bound workload.</p>
+<p>Additionally, we measured the throughput (execution time per ﬁle merged) of the merging process for each one of the data points collected:</p>
+<table>
+<thead>
+<tr><th></th><th>Sequential</th><th>2 workers</th><th>4 workers</th><th>8 workers</th></tr>
+</thead>
+<tbody>
+<tr><td>8 Files</td><td>3.83 s</td><td>3.25 s</td><td>3.58 s</td><td>&ndash;</td></tr>
+<tr><td>16 Files</td><td>4.56 s</td><td>2.73 s</td><td>2.51 s</td><td>3.31 s</td></tr>
+<tr><td>32 Files</td><td>8.26 s</td><td>3.47 s</td><td>2.26 s</td><td>2.82 s</td></tr>
+<tr><td>48 Files</td><td>15.51 s</td><td>5.25 s</td><td>2.59 s</td><td>2.59 s</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 7.1</strong>: Throughput of seconds per file merged in hadd, with an increasing number of files for a varying number of processing units.</em></p>
+<p>We can observe that the time required to merge a single ﬁle increases substantially in the sequential case as the number of ﬁles grows, but this variation in time attenuates as we increase the number of processing units. This is due to the size of the ﬁles and a more eﬃcient utilization of resources when merging in parallel, especially caching, and an improved performance of ROOT&#39;s I/O subsystem when performing a reduced amount of merges per process.</p>
+<p>Finally, we benchmark the performance of an <code>hadd</code> parallel merge of ROOT trees (TTree), comparing the speedup with the reference ideal. In anticipation of a slowdown due to the more complex nature of the TTree and the optimizations introduced in the sequential case, we also compared the measurements in the case that a TTree instance is loaded in memory, emulating this by creating a RAM disk.</p>
+<figure>
+    <img src="/media/executor_applications/SpeedUpTrees.png"
+         alt="Parallelizing hadd (trees)"/> <figcaption>
+            <p><em><strong>Figure 7.3</strong>: Speed up obtained when merging in parallel with hadd 48 ROOT files containing TTrees, measured both from disk and from a RAM disk, against the theoretical reference.</em></p>
+        </figcaption>
+</figure>
+<p>The results obtained, shown in Figure 7.3, are discouraging in both cases, displaying a similar undesired slowdown instead of the speed up we were hoping for. Without changing the original user interfaces we can provide remarkable speed up when merging histograms, only by applying a parallel MapReduce pattern to <code>hadd</code>. However, while our implementation shows significant acceleration gains when merging histogram ﬁles, it does not perform so well when merging trees.</p>
+<p>This parallelization has also been attempted in the multithreaded execution policy, but we have failed to obtain results due to non-thread-safe invocations on global variables required by ROOT&#39;s memory manager.</p>
+<h2 id="72-parallel-analysis-in-rdataframe">7.2 Parallel analysis in RDataFrame<a class="anchor" href="#72-parallel-analysis-in-rdataframe">#</a></h2>
+<p>RDataFrame<sup id="fnref:5"><a href="#fn:5" class="footnote-ref" role="doc-noteref">5</a></sup> (see the <a href="/blog/cern/root/#5-rdataframe">ROOT article</a> of this series) is one of the most relevant developments in the ongoing modernization eﬀort of ROOT. One of its main features is the support for implicit parallelism<sup id="fnref:6"><a href="#fn:6" class="footnote-ref" role="doc-noteref">6</a></sup>, exploiting TThreadExecutor directly, e.g. for the parallel execution of the event loop, and indirectly, when performing frequent operations that support implicit multithreading (IMT) and rely on TThreadExecutor for executing their operations concurrently (e.g. when reading in parallel from a TTree).</p>
+<p>RDataFrame introduces a new programming paradigm in ROOT that reduces code complexity by designing its interfaces in a user-friendly way. However, with this design, RDataFrame also introduces several performance disadvantages as a tradeoﬀ for the easier programming model and its PyROOT implementation. This is the case of the non-negligible overhead due to the extensive use of JIT-compiling, or the cost inherent to the expression of the analysis in a modularized, higher-level way (e.g. extra function calls, allocation of partial results).</p>
+<p>In this section, we analyze RDataFrame&#39;s convenience and benchmark its performance by porting an ad-hoc, highly optimized, parallel code to RDataFrame. This code, Totem, is used to explore an experimental model for new physics. Totem is a Monte Carlo event generator that, following this experimental model, performs a physics simulation of very forward QCD-low p<sub>T</sub> processes according to a parametric model, and writes the relevant data resulting from this simulation into histograms. It consists of a monolithic function that performs all physics-related operations, from simulation to analysis, and the generation of the resulting histograms. Parallelism is implemented by explicitly managing POSIX threads. Despite its complexity, Totem exhibits remarkable performance and scalability, as it has been designed, from inception, for execution in highly parallel architectures.</p>
+<p>Porting this code to RDataFrame oﬀers the following advantages:</p>
+<ul>
+<li>
+<p><strong>Implicit parallelism</strong>: Instead of managing the threads directly through POSIX directives, RDataFrame&#39;s support for implicit multithreading allows the user to beneﬁt from parallelism while writing (thread-safe) sequential code. In addition to the performance boost provided by RDataFrame, the user beneﬁts from the growing number of operations in ROOT that support an IMT-based parallel mode.</p>
+</li>
+<li>
+<p><strong>Declarative and functional programming model</strong>: Instead of dealing with the details of its computation, users express their analyses with RDataFrame in terms of chained transformations and actions; that is, they describe which operations the analysis is composed of, instead of expressing how to perform these operations.</p>
+</li>
+<li>
+<p><strong>Cleaner code</strong>: Due to its functional programming model, RDataFrame increases code modularity by factoring transformations and actions out of the event loop.</p>
+</li>
+<li>
+<p><strong>Lazy, eﬃcient evaluation</strong>: The processing of the graph is deferred to the ﬁrst access to one action result. This is especially convenient with RDataFrame&#39;s organization of transformations and actions in a computational graph, which allows us to reuse the results from shared nodes of the graph.</p>
+</li>
+</ul>
+<p>As Totem&#39;s code was developed in a previous version of the software (ROOT 5), we proceed with a two-step translation, guaranteeing reproducibility after each step. First, we port the code to ROOT 6, identifying and refactoring the event loop into a single-event evaluation lambda, and relying on TThreadExecutor for its parallelization, avoiding thread-locality and simplifying the programming model by removing all thread management directives. The second step requires isolating the simulation from the analysis, encapsulating the former into a single-event evaluation lambda, and expressing the latter by means of RDataFrame, from the execution of the event loop, to the ﬁlling of the ﬁnal histograms.</p>
+<p>The original, complex code of Totem and the explanation of the physics behind it are outside of the scope of this article. However, it is helpful to examine RDataFrame&#39;s version of the code to showcase its simpler and more convenient programming model.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">// Data structure to encapsulate the results to return from the simulation</span>
+<span style="color: #FF79C6">class</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">collisionData</span><span style="color: #F8F8F2"> {</span>
+<span style="color: #FF79C6">public</span><span style="color: #F8F8F2">:</span>
+<span style="color: #F8F8F2">   collisionData() {}</span>
+<span style="color: #F8F8F2">   collisionData(</span><span style="color: #8BE9FD; font-style: italic">bool</span><span style="color: #F8F8F2"> hC, Double_t </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">r, Double_t </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">w, Double_t </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">f):</span>
+<span style="color: #F8F8F2">                 hasCollided(hC), roffset(r), wevent(w), fr(f) {}</span>
+
+<span style="color: #F8F8F2">   </span><span style="color: #8BE9FD; font-style: italic">bool</span><span style="color: #F8F8F2"> hasCollided </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">false</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">   Double_t roffset{};</span>
+<span style="color: #F8F8F2">   Double_t wevent{};</span>
+<span style="color: #F8F8F2">   Double_t fr{};</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #6272A4">// Physics simulation.</span>
+<span style="color: #6272A4">// The data filtering and histogram generation with the results has been</span>
+<span style="color: #6272A4">// factored out, leaving the most fundamental operations on events.</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> collideOps </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](</span><span style="color: #8BE9FD; font-style: italic">unsigned</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">int</span><span style="color: #F8F8F2"> slot) {</span>
+<span style="color: #F8F8F2">   </span><span style="color: #6272A4">// ....</span>
+<span style="color: #F8F8F2">   </span><span style="color: #6272A4">// intensive physics computations</span>
+<span style="color: #F8F8F2">   </span><span style="color: #6272A4">// ....</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> collisionData(hasCollided, roffset, wevent, fr);</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #6272A4">// Enable implicit multithreading</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">EnableImplicitMT();</span>
+
+<span style="color: #6272A4">// Helpers</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hasCollided </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">bool</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">hasCollided) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> hasCollided; };</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hasNotCollided </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">bool</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">hasCollided) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">!</span><span style="color: #F8F8F2">hasCollided; };</span>
+
+<span style="color: #6272A4">// Initialize an empty dataframe with nEvents rows</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">RDataFrame d(nEvents);</span>
+
+<span style="color: #6272A4">// Define the new per-event variables from the results obtained per-event</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> d2 </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> d.DefineSlot(</span><span style="color: #BD93F9">"collisionData"</span><span style="color: #F8F8F2">, collideOps)</span>
+<span style="color: #F8F8F2">           .Define(</span><span style="color: #BD93F9">"hasCollided"</span><span style="color: #F8F8F2">,</span>
+<span style="color: #F8F8F2">                   [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> collisionData </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">colData) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> colData.hasCollided; },</span>
+<span style="color: #F8F8F2">                   {</span><span style="color: #BD93F9">"collisionData"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">           .Define(</span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">, [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](collisionData </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">colData) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> colData.roffset; },</span>
+<span style="color: #F8F8F2">                   {</span><span style="color: #BD93F9">"collisionData"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">           .Define(</span><span style="color: #BD93F9">"wevent"</span><span style="color: #F8F8F2">, [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> collisionData </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">colData) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> colData.wevent; },</span>
+<span style="color: #F8F8F2">                   {</span><span style="color: #BD93F9">"collisionData"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">           .Define(</span><span style="color: #BD93F9">"fr"</span><span style="color: #F8F8F2">, [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> collisionData </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">colData) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> colData.fr; },</span>
+<span style="color: #F8F8F2">                   {</span><span style="color: #BD93F9">"collisionData"</span><span style="color: #F8F8F2">});</span>
+
+<span style="color: #6272A4">// Generate 1D and 2D histograms to visualize the results.</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> notCol </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> d2.Filter(hasNotCollided, {</span><span style="color: #BD93F9">"hasCollided"</span><span style="color: #F8F8F2">});</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> helast </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> notCol.Filter([](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">offset) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> offset </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> </span><span style="color: #BD93F9">1.01</span><span style="color: #F8F8F2">; }, {</span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">                     .Histo1D</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(TH1D(</span><span style="color: #BD93F9">"helast"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"elastic collisions in proton range"</span><span style="color: #F8F8F2">,</span>
+<span style="color: #F8F8F2">                                           </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, distmin, </span><span style="color: #BD93F9">1.01</span><span style="color: #F8F8F2">),</span>
+<span style="color: #F8F8F2">                                      </span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hfr </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> notCol.Histo1D</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(TH1D(</span><span style="color: #BD93F9">"hfr"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"p-p elastic"</span><span style="color: #F8F8F2">, ntbins, tbins),</span>
+<span style="color: #F8F8F2">                                   </span><span style="color: #BD93F9">"fr"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"wevent"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hfr1 </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> notCol.Filter([](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">offset) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> offset </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> </span><span style="color: #BD93F9">1.01</span><span style="color: #F8F8F2">; }, {</span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">                   .Histo2D</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(TH2D(</span><span style="color: #BD93F9">"hfr1"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"hfr1"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">0</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">0.5</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, distmin, </span><span style="color: #BD93F9">0.7</span><span style="color: #F8F8F2">),</span>
+<span style="color: #F8F8F2">                                    </span><span style="color: #BD93F9">"fr"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"wevent"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hfr2 </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> notCol.Histo2D</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(TH2D(</span><span style="color: #BD93F9">"hfr2"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"hfr2"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, tmin, tmax, </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, distmin, </span><span style="color: #BD93F9">1</span><span style="color: #F8F8F2">),</span>
+<span style="color: #F8F8F2">                                    </span><span style="color: #BD93F9">"fr"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"wevent"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> hcoll </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> d2.Filter(hasCollided, {</span><span style="color: #BD93F9">"hasCollided"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">               .Filter([](</span><span style="color: #8BE9FD; font-style: italic">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">offset) { </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> offset </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> </span><span style="color: #BD93F9">1.01</span><span style="color: #F8F8F2">; }, {</span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">})</span>
+<span style="color: #F8F8F2">               .Histo1D</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD; font-style: italic">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(TH1D(</span><span style="color: #BD93F9">"hcoll"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"inelastic collisions in proton range"</span><span style="color: #F8F8F2">,</span>
+<span style="color: #F8F8F2">                                     </span><span style="color: #BD93F9">100</span><span style="color: #F8F8F2">, distmin, </span><span style="color: #BD93F9">1.01</span><span style="color: #F8F8F2">),</span>
+<span style="color: #F8F8F2">                                </span><span style="color: #BD93F9">"roffset"</span><span style="color: #F8F8F2">);</span>
+</code></pre></div><p><em><strong>Listing 7.2</strong>: RDataFrame implementation of Totem. Lines 17-22 (original numbering) define the lambda encapsulating the Monte Carlo simulation of a single event, whose body has been omitted for irrelevance to the example; it returns, in the collisionData struct declared above it, the relevant data for the subsequent analysis. Enabling implicit multithreading turns the following event loop and histogram generation into a parallel operation without any explicit thread management.</em></p>
+<p>Where possible, we maintained the original names of the variables. The lambda encapsulating the Monte Carlo simulation of a single event returns, encapsulated in the <code>collisionData</code> structure, the relevant data for the subsequent analysis. Enabling the implicit multithreading mechanisms in ROOT is all it takes for the automatic multithreaded parallelization of RDataFrame to kick in.</p>
+<p>RDataFrame&#39;s dataset can be pictured as a table, where each row represents an entry of the columnar data. In this case, we initialize a new RDataFrame of <code>nEvents</code> (entries or rows of the data frame), and the subsequent chain of <code>Define</code> calls executes the Monte Carlo simulation event loop in parallel and stores the relevant quantities resulting from it in new deﬁned variables (columns of the data frame). Finally, we perform our analysis, expressing it functionally and declaratively, in terms of chained actions and transformations. For each one of the ﬁnal results (histograms), we apply ﬁrst, as transformations, one or more ﬁltering operations on the data and then, as actions, the generation of each one of the resulting one- or two-dimensional histograms.</p>
+<p>The evaluation of the event loop in RDataFrame is performed lazily: the ﬁrst time we access a result from an action of the computational graph, RDataFrame proceeds to the evaluation of the graph for all previously booked results. However, after an event loop, in case we add another result and trigger another event loop, all parts of the graph that are necessary for the generation of these results are re-evaluated. This aﬀects directly the way we express our analyses, as an ineﬃcient booking of the results may result in unnecessary computational redundancy&mdash;for instance, booking an additional, unrelated result after already triggering one event loop may force the re-evaluation of shared upstream transformations that had already been computed, a redundant evaluation that could be avoided by booking every result before accessing any of them.</p>
+<p>We benchmark the performance of both versions of Totem in two highly-parallel computers. The ﬁrst benchmarking machine is an Intel Xeon E5-2683 v3<sup id="fnref:7"><a href="#fn:7" class="footnote-ref" role="doc-noteref">7</a></sup> server composed of two NUMA domains with 14 physical cores and 28 logical threads each at 2.00 GHz with 32 GB of RAM per NUMA node. The second, more extreme, many-core computer is an Intel Xeon Phi 7210<sup id="fnref:8"><a href="#fn:8" class="footnote-ref" role="doc-noteref">8</a></sup> server composed of two sockets with 64 cores each at 1.3 GHz (supporting hyperthreading) and 110 GB of RAM in total. In order to avoid confusion, we refer to this computer by its former code name: Intel Knights Landing (KNL). The times obtained have been measured with the standard high resolution clock of C++, each one averaged over several executions.</p>
+<table>
+<thead>
+<tr><th>Threads</th><th>RDataFrame (s)</th><th>Original (s)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>2932.95</td><td>2919.44</td><td>0.99</td></tr>
+<tr><td>10</td><td>297.66</td><td>304.75</td><td>1.02</td></tr>
+<tr><td>20</td><td>151.32</td><td>151.64</td><td>&asymp;1</td></tr>
+<tr><td>30</td><td>117.38</td><td>116.55</td><td>0.99</td></tr>
+<tr><td>40</td><td>96.16</td><td>96.49</td><td>&asymp;1</td></tr>
+<tr><td>50</td><td>81.75</td><td>81.66</td><td>&asymp;1</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 7.2</strong>: Execution time of Totem for a simulation of 36000 events on the Intel Xeon server.</em></p>
+<table>
+<thead>
+<tr><th>Threads</th><th>RDataFrame (s)</th><th>Original (s)</th><th>Ratio</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>13842.96</td><td>14011.58</td><td>1.01</td></tr>
+<tr><td>16</td><td>887.49</td><td>869.35</td><td>0.98</td></tr>
+<tr><td>32</td><td>468.13</td><td>448.58</td><td>0.96</td></tr>
+<tr><td>64</td><td>253.55</td><td>237.56</td><td>0.94</td></tr>
+<tr><td>96</td><td>188.66</td><td>184.81</td><td>0.98</td></tr>
+<tr><td>128</td><td>156.21</td><td>151.88</td><td>0.97</td></tr>
+<tr><td>146</td><td>144.21</td><td>149.09</td><td>1.03</td></tr>
+<tr><td>164</td><td>132.49</td><td>146.78</td><td>1.11</td></tr>
+<tr><td>182</td><td>123.58</td><td>151.10</td><td>1.22</td></tr>
+<tr><td>200</td><td>120.84</td><td>159.61</td><td>1.32</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 7.3</strong>: Execution time of Totem for a simulation of 36000 events on the Intel Knights Landing (KNL) server.</em></p>
+<p>We observe near-identical performance between the execution time of the original code and RDataFrame&#39;s implementation on the Xeon server, with the ratio between the two hovering around 1 regardless of the thread count. Instead, the KNL benchmark exhibits a remarkable diﬀerence in scalability in favour of RDataFrame when approaching extreme levels of parallelism: from 146 threads onward, the ratio climbs well past 1, reaching 1.32 at 200 threads, meaning RDataFrame&#39;s version runs noticeably faster than the original, hand-tuned POSIX-threads code. RDataFrame, while oﬀering a more general, convenient and user-friendly way to express the analysis, not only matches the performance of the original ad-hoc code but improves its scalability in many-core architectures.</p>
+<h2 id="73-vectorization-of-mathematical-formulas-compiled-at-runtime">7.3 Vectorization of mathematical formulas compiled at runtime<a class="anchor" href="#73-vectorization-of-mathematical-formulas-compiled-at-runtime">#</a></h2>
+<span id="tformula"></span>
+<p>TFormula, the formula class in ROOT, is the perfect candidate to beneﬁt from vectorization. TFormula translates user-deﬁned formulas, expressed as a string, by compiling them into C++ code at runtime, exploiting JIT compilation with Cling. In addition to simple variables and C++ code supported by the standard, TFormula supports ROOT-deﬁned and user-declared functions registered in a list of global functions kept by ROOT, e.g. a function deﬁned with a TF1. Moreover, TFormula provides automatic translation of the most common functions used in HEP analysis into their C++ inline representation, such as <code>&quot;gauss&quot;</code> (Gaussian distribution) or <code>&quot;landau&quot;</code> (Landau distribution). TFormula is an important component of ROOT, and it is used extensively, from the analysis evaluation in <code>TTree::Draw()</code> to the deﬁnition of TF1 functions.</p>
+<p>Vectorization is implemented in TFormula by compiling the formula variables into ROOT&#39;s SIMD types (<code>ROOT::Double_v</code>) and relying on VecCore&#39;s backend to perform the SIMD operations (see the <a href="/blog/cern/dlp/">Data-level parallelism article</a> of this series). TFormula&#39;s list of automatically translated functions has been extended to provide automatic translation for functions with a VecCore implementation (e.g. <code>exp</code> translates into <code>vecCore::math::Exp</code>).</p>
+<p>The following listing displays a code example for the declaration of a formula. The ﬁrst line creates the function <code>&quot;Signal&quot;</code> from a formula and registers it in the global list of ROOT; from this moment, <code>&quot;Signal&quot;</code> is available for usage in other formulas. The second statement performs the same operation for a diﬀerent formula, <code>&quot;Background&quot;</code>. The declaration of <code>&quot;FormulaV&quot;</code> showcases the usage of user-declared functions once they have been registered, creating the new function from a formula composed of the addition of the previous two declared functions. The only signiﬁcant diﬀerence between this code and that for a scalar formula is the ﬁnal call declaring the function to be vectorizable&mdash;a change in the nature of the data the formula accepts that is still possible at this stage because the JIT compilation of the formula occurs upon invocation instead of on declaration.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> fSignal </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">new</span><span style="color: #F8F8F2"> TFormula(</span><span style="color: #BD93F9">"Signal"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"[0] * (-(x + (-130.)) * (x + (-130.)) / 2)"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> fBackground </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">new</span><span style="color: #F8F8F2"> TFormula(</span><span style="color: #BD93F9">"Background"</span><span style="color: #F8F8F2">,</span>
+<span style="color: #F8F8F2">                    </span><span style="color: #BD93F9">"[0] * (-([1] * (x * (0.01)) - [2] * (x * (0.01)) * (x * (0.01))))"</span><span style="color: #F8F8F2">);</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> fFormula </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">new</span><span style="color: #F8F8F2"> TFormula(</span><span style="color: #BD93F9">"FormulaV"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"Signal+Background"</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">fFormula</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">SetVectorized(</span><span style="color: #8BE9FD; font-style: italic">true</span><span style="color: #F8F8F2">);</span>
+</code></pre></div><p><em><strong>Listing 7.3</strong>: TFormula declaration for a signal-plus-background model, with vectorized evaluation enabled on the combined formula.</em></p>
+<p>We propose three diﬀerent cases, or functions, to benchmark the performance of vectorization in TFormula. Case 1 evaluates a function composed of the sum of a signal given by a Gaussian distribution centered on 130 with variance 1, and a background given by an exponential function with a polynomial exponent&mdash;this is the function declared from a formula in Listing 7.3. Case 2 evaluates a similar function that removes the exponential calls. Case 3 evaluates a simple polynomial.</p>
+<p>For a more extensive comparison, we implement each one of the cases as a free function; as a TF1 wrapping a free function; as a TFormula; and as a TF1 wrapping a ROOT formula. We compiled these benchmarks with Apple Clang 9.1.0 and AVX2 as the set of instructions, on an Intel Core i5-4278U<sup id="fnref:9"><a href="#fn:9" class="footnote-ref" role="doc-noteref">9</a></sup> processor with 4 cores at 2.6 GHz and 8 GB of RAM.</p>
+<table>
+<thead>
+<tr><th>Case</th><th>Implementation</th><th>Scalar (ns)</th><th>Vectorized (ns)</th><th>Speed up</th></tr>
+</thead>
+<tbody>
+<tr><td rowspan="4">1</td><td>Free function</td><td>11.6</td><td>12.1</td><td>0.96</td></tr>
+<tr><td>TF1 (free function)</td><td>28.5</td><td>13.2</td><td>2.15</td></tr>
+<tr><td>Formula</td><td>22.9</td><td>12.8</td><td>1.79</td></tr>
+<tr><td>TF1 (formula)</td><td>26.2</td><td>13.1</td><td>2.00</td></tr>
+<tr><td rowspan="4">2</td><td>Free function</td><td>1.89</td><td>0.541</td><td>3.50</td></tr>
+<tr><td>TF1 (free function)</td><td>8.48</td><td>2.39</td><td>3.55</td></tr>
+<tr><td>Formula</td><td>22.8</td><td>13.0</td><td>1.76</td></tr>
+<tr><td>TF1 (formula)</td><td>27.0</td><td>12.9</td><td>2.10</td></tr>
+<tr><td rowspan="4">3</td><td>Free function</td><td>1.50</td><td>0.467</td><td>3.22</td></tr>
+<tr><td>TF1 (free function)</td><td>7.91</td><td>1.93</td><td>4.09</td></tr>
+<tr><td>Formula</td><td>22.1</td><td>8.36</td><td>2.64</td></tr>
+<tr><td>TF1 (formula)</td><td>24.6</td><td>8.50</td><td>2.90</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 7.4</strong>: Execution time and speed up, normalized to the size of the data, for the scalar and SIMD evaluation of each of the three cases over one data point, implementing each one as a free function, as a TF1 wrapping a free function, as a TFormula, and as a TF1 wrapping a ROOT formula.</em></p>
+<p>The results exhibit a disparity in results for TFormula when vectorizing. While we expect TFormula to perform worse than a free function due to the overhead and extra levels of indirection introduced by the JIT compilation, the diﬀerences in speed up indicate a suboptimal performance of the formula code, reaching in Case 2 a divergence of 2&times; in favour of the free function vectorization with VecCore. TF1, on the other hand, performs as expected, experiencing little overhead when evaluating short functions&mdash;despite the introduction of virtual calls and extra levels of indirection&mdash;consistently roughly doubling (or more) its throughput once vectorized. Notably, autovectorization also aﬀects the results in Case 1, making the vectorized implementation of the free function slightly slower than the scalar one, as the compiler was already able to autovectorize part of the scalar version.</p>
+<h2 id="conclusions">Conclusions<a class="anchor" href="#conclusions">#</a></h2>
+<p>The three independent studies presented in this article conﬁrm, on real and varied workloads, the value of the parallelization work described throughout this series. Parallelizing <code>hadd</code> with a MapReduce pattern, without touching its user-facing interface, yields large speed ups when merging histogram ﬁles, although the same approach falls short for TTrees, where the sequential I/O optimizations already in place are harder to beat. Porting a highly-tuned, explicitly multithreaded physics analysis to RDataFrame matches the performance of the original code on a regular multicore server, and surpasses it on an extreme many-core architecture, all while trading low-level thread management for a declarative, more maintainable programming model. Finally, vectorizing TFormula via VecCore delivers consistent gains for TF1-wrapped formulas, even if the overhead of the JIT-compiled formula machinery keeps bare TFormula evaluation from fully reaching the speed ups observed for free functions.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p>ROOT Project. The ROOT object I/O system. <a href="https://root.cern.ch/root/InputOutput.html">link</a> <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:2" role="doc-endnote">
+<p>Dean, J., &amp; Ghemawat, S. (2008). MapReduce: simplified data processing on large clusters. <em>Communications of the ACM, 51</em>(1), 107-113. <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:3" role="doc-endnote">
+<p>Guiraud, E., &amp; Ganis, G. (2015). Enhancements to Multiprocessing in ROOT. <a href="https://doi.org/10.5281/zenodo.31854">link</a> <a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:4" role="doc-endnote">
+<p>Intel. Intel Core i7-4790 Processor. <a href="https://ark.intel.com/content/www/us/en/ark/products/80806/intel-core-i74790-processor-8m-cache-up-to-4-00-ghz.html">link</a> <a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:5" role="doc-endnote">
+<p>Guiraud, E., Naumann, A., &amp; Piparo, D. (2017). TDataFrame: functional chains for ROOT data analyses. <a href="https://doi.org/10.5281/zenodo.260230">link</a> <a href="#fnref:5" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:6" role="doc-endnote">
+<p>Canal, P., Ganis, G., Guiraud, E., Mato Vila, P., Moneta, L., Piparo, D., Tejedor, E., &amp; Valls Pla, X. Expressing Parallelism in ROOT. <em>22nd International Conference on Computing in High Energy and Nuclear Physics</em>, Journal of Physics: Conference Series, IOP. <a href="#fnref:6" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:7" role="doc-endnote">
+<p>Intel. Intel Xeon Processor E5-2683 v3. <a href="https://ark.intel.com/content/www/us/en/ark/products/81055/intel-xeon-processor-e52683-v3-35m-cache-2-00-ghz.html">link</a> <a href="#fnref:7" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:8" role="doc-endnote">
+<p>Intel. Intel Xeon Phi Processor 7210. <a href="https://ark.intel.com/content/www/us/en/ark/products/94033/intel-xeon-phi-processor-7210-16gb-1-30-ghz-64-core.html">link</a> <a href="#fnref:8" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:9" role="doc-endnote">
+<p>Intel. Intel Core i5-4278U Processor. <a href="https://ark.intel.com/content/www/us/en/ark/products/83508/intel-core-i54278u-processor-3m-cache-up-to-3-10-ghz.html">link</a> <a href="#fnref:9" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+
+
+          </article>
+
+
+<ul class="tags__list">
+
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/root/">root</a>
+    </li></ul>
+
+ <div class="pagination">
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/root_fitting/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">Parallelization of the fit</span>
+    </a>
+
+
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/rms/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Automatization of Techlab&#39;s Request Management Process</a>
+    </a>
+
+</div>
+
+
+          <footer class="post__footer">
+            <div class="social-icons">
+
+
+
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+
+      <div class="toc-container">
+
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#71-merging-of-root-files">7.1 Merging of ROOT files</a></li>
+        <li><a href="#72-parallel-analysis-in-rdataframe">7.2 Parallel analysis in RDataFrame</a></li>
+        <li><a href="#73-vectorization-of-mathematical-formulas-compiled-at-runtime">7.3 Vectorization of mathematical formulas compiled at runtime</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+
+    </div>
+
+
+  </main>
+
+
+
+
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+
+
+
+
+    <script src="/js/table-of-contents.js"></script>
+
+
+
+</body>
+
+</html>

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>Task-level parallelism | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+
+
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+
+
+
+
+
+
+
+
+
+
+
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+
+
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+
+
+
+
+
+
+<script type="application/ld+json">
+
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "Task-level parallelism",
+      "headline" : "Task-level parallelism",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2019",
+      "datePublished": "2019-07-18 11:15:32 \u002b0200 CEST",
+      "dateModified" : "2019-07-18 11:15:32 \u002b0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/tlp\/",
+      "wordCount" : "6091",
+      "keywords" : ["Blog"]
+    }
+
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+
+
+      <li>
+        <a  href="/">about</a>
+      </li>
+
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+
+  </ul>
+</nav>
+
+
+  <main>
+
+
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">Task-level parallelism</h1>
+            <time datetime="2019-07-18 11:15:32 &#43;0200 CEST" class="post__date">Jul 18 2019</time>
+          </header>
+          <article class="post__content">
+
+<section class="warning_block"> <p>This article is part of a series that I'm slowly publishing, and it still has several broken links referencing unpublished articles.</p></section>
+<p>Contemporary HEP analysis requires the processing of large quantities of data. With the breakdown of Dennard scaling in the early 2000s<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup><sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup>, and the subsequent decrease in CPU clock speed, alternative solutions were required to satisfy the demands of modern physics analyses.</p>
+<p>Historically, this limitation has been addressed by incrementing the number of processing units, or cores, in a processor. This evolution of hardware towards increasing levels of parallelism drives the adoption of parallel workflows in the data analysis software, across many levels of parallelism<sup id="fnref:20"><a href="#fn:20" class="footnote-ref" role="doc-noteref">20</a></sup>, to exploit the possibilities oﬀered by modern architectures.</p>
+<p>At the same time, many HEP processes can be classified in generic patterns, or algorithms, reproduced over several analyses, adapted to the specific problems at hand. Our goal is to identify these patterns in the Physics analysis processes, and implement in the ROOT software framework a set of tools to parallelize them across distinct levels, from the most common patterns, such as MapReduce, to the ones that provide more potential speed up, such as the integration of tools for vectorization and the adoption of SIMD types. As part of this eﬀort, new generic classes supporting a task-based parallelization and support for diﬀerent SIMD intrinsics abstraction libraries have been introduced in ROOT.</p>
+<p>This Chapter focuses on task-level parallelism. Section <a href="#41-the-event-processing-paradigm-and-task-level-parallelism">4.1</a> familiarizes the reader with the event-processing paradigm, a core concept of HEP analyses, and lays out the ideas behind the implementation of task-level parallelism in both multiprocess and multithreaded execution policies.</p>
+<p>Section <a href="#42-texecutor-a-mapreduce-for-root">4.2</a> introduces TExecutor as the executors&rsquo; common interface, with a multiprocess implementation in TProcessExecutor (Section <a href="#43-tprocessexecutor">4.3</a>) and a multithreaded implementation in TThreadExecutor (Section <a href="#44-tthreadexecutor">4.4</a>). These executors&rsquo; interfaces allow the explicit specification of the task&rsquo;s size to potentially improve performance, as analyzed in Section <a href="#46-task-granularity-analysis">4.6</a>. Section <a href="#47-a-numa-aware-executor">4.7</a> proposes a new executor that combines multiprocessing and multithreading to mitigate the negative performance impact when dealing with non-uniform memory access (NUMA) architectures.</p>
+<p>Finally, Section <a href="#45-tpoolmanager">4.5</a> justifies the creation of a centralized manager for the pool of workers in the multithreaded case, to avoid undesirable interactions between the parallelization modes in ROOT and the diﬀerent classes built on top of the TBB scheduler.</p>
+<h2 id="41-the-event-processing-paradigm-and-task-level-parallelism">4.1 The event-processing paradigm and task-level parallelism<a class="anchor" href="#41-the-event-processing-paradigm-and-task-level-parallelism">#</a></h2>
+<p>In a typical HEP analysis workflow, the event&mdash;that is the data representation of single or multiple piled-up collisions detected and stored for oﬄine analysis&mdash;is the minimum unit of data to process. The necessary operations required by the analysis at hand are applied independently and consecutively to each event in a discrete collection, an iterative process that is referred to as the event loop.</p>
+<p>Task-level parallelism refers to the partition of the workload into several tasks, or work packages, that are evaluated concurrently. In terms of the event-processing paradigm described above, this results in a division of the event loop into partitions, or blocks of events. These work units typically contain the same number of events, which are then distributed between the diﬀerent concurrent processing units in the system. The event loop is a natural fit for the task-level approach, as the events recorded by the detectors are many and independent from each other. This makes it easy to encapsulate, in independent tasks, the evaluation of the event loop over subsets of the total recorded events.</p>
+<p>Task-level parallelism is implemented in ROOT through the executors, which are ROOT classes implementing the MapReduce pattern<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup>&mdash;a flexible pattern that appears rather often when processing data composed of independent elements.</p>
+<p>Traditionally, task-level parallelism is extracted by dividing the workload in as many blocks as processing units are available in the system. This scheme though is not ideal in terms of workload balancing between the workers when the tasks to process contain early termination instructions or aggressive branching, which applies to many real use cases.</p>
+<p>Instead, we divide the work into smaller tasks and delegate the load balancing to the schedulers of the chosen executor implementation so that we benefit from the mechanisms (e.g. work stealing, greedy reduction) they integrate. By default, we produce as many tasks as data elements are passed as inputs. However, this can create a significant task creation overhead that can impair performance. Therefore we also provide the option for users to chunk themselves the data as appropriate, or to rely on the built-in chunking mechanisms in our interfaces. These three options&mdash;the default or the two user-driven approaches&mdash;improve over the traditional approach in unbalanced cases and, in addition, accommodate more flexibility in the program design phase. Section <a href="#46-task-granularity-analysis">4.6</a> analyzes the impact that task granularity has on the performance obtained when parallelizing diﬀerently balanced examples.</p>
+<p>While the approach we adopt in order to exploit task-level parallelism potentially improves performance, it requires a change in how multithreading problems have traditionally been addressed. For example, thread local variables become useless if we allow task interleaving, or adding synchronization directives between tasks would defeat the purpose of creating additional tasks for better load balancing. If these cases cannot be avoided, the traditional approach of dividing the workload is the best option.</p>
+<h2 id="42-texecutor-a-mapreduce-for-root">4.2 TExecutor: a MapReduce for ROOT<a class="anchor" href="#42-texecutor-a-mapreduce-for-root">#</a></h2>
+<p>The MapReduce programming model expresses problems in parallel by partitioning the input data and distributing it to several workers for processing. During the first step, each one of these workers will then apply transformations on its data partition and return an intermediate result (<em>Map</em>). During the second step, all the intermediate results will be combined into a single output (<em>Reduce</em>).</p>
+<p>TExecutor is the generic interface for MapReduce operations in ROOT. In addition to applying Map and Reduce over input data, TExecutor contemplates the case where no data is received as an input but a method must be applied <em>N</em> times and then its outputs have to be reduced, as well as the case where the Map operation does not generate intermediate results (<code>ForEach</code>).</p>
+<p>In more detail, TExecutor oﬀers the following interfaces or methods:</p>
+<ul>
+<li><p><strong>Map</strong>: Function that receives as an input the processing method to apply and either input data or the number of times to apply the method. It returns the results in a standard vector.</p></li>
+<li><p><strong>Reduce</strong>: Combination or reduction of the results returned by map into a final result. This operation is usually sequential, but an overload has been provided for parallelizing the case where the reduction function is a binary operator.</p></li>
+<li><p><strong>MapReduce</strong>: Concatenation of the previous two interfaces.</p></li>
+<li><p><strong>Foreach</strong>: A Map that does not generate partial results.</p></li>
+</ul>
+<p>TExecutor has specialized instances of this pattern for multiprocessing (in TProcessExecutor) and thread-based multitasking (in TThreadExecutor).</p>
+<h2 id="43-tprocessexecutor"><span id="tprocessexecutor"></span>4.3 TProcessExecutor<a class="anchor" href="#43-tprocessexecutor">#</a></h2>
+<p>Traditionally, multiprocessing has been the common approach to parallelize ROOT due to the thread-unsafe implementation of most interfaces. While there existed several multiprocess solutions such as PROOF<sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup> and PROOF-Lite, used to parallelize the work with the data model in multicore machines, there was a need for a lighter framework capable of parallelizing more general operations in a transparent way for the user.</p>
+<p>TProcessExecutor<sup id="fnref:5"><a href="#fn:5" class="footnote-ref" role="doc-noteref">5</a></sup> provides a lighter multiprocessing framework in ROOT, oriented to single nodes, whose interface implements the MapReduce model defined by TExecutor.</p>
+<p>Listing 4.1 shows a basic example of the usage of TProcessExecutor. First we define our map function, which implements the task to be computed in parallel. Then we propose our reduction function, accumulating the intermediate result from the map. We initialize TProcessExecutor and the pool of workers. Finally, by calling <code>TProcessExecutor::MapReduce</code>, we perform the operation in parallel.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> mapFunc </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> UInt_t </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">i){</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> i</span><span style="color: #FF79C6">+</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> reduceFunc </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">vector</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">UInt_t</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mapV){</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">accumulate(mapV.begin(), mapV.end());</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TProcessExecutor pool;</span>
+<span style="color: #F8F8F2">pool.MapReduce( mapFunction, ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TSeq</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD">int</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(</span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">), reductionFunction);</span>
+</code></pre></div>
+<p><em><strong>Listing 4.1</strong>: Simple working example of a multiprocessed call to the MapReduce framework.</em></p>
+<p>As a framework, TProcessExecutor improves on the previous approaches to single-machine multiprocessing (PROOF, PROOF-Lite) by forking a ROOT session. Before TProcessExecutor was available, ROOT&rsquo;s multiprocessing performance on a single machine was undermined by the overhead due to the creation of the child processes, with constraints such as the creation of ad-hoc binaries for each of the subprocesses, or the setting of the process environment by passing all the information on scripts and libraries loaded in the client session. Instead, the system call <code>fork</code> provides the workers with access to the client&rsquo;s memory, which greatly reduces the amount of information passed; and copy-on-write, which avoids duplicating the memory of the original process until the subprocesses write it.</p>
+<p>Thanks to these advantages, creating workers becomes cheaper and faster. Another benefit is flexibility. While PROOF and PROOF-Lite are designed for dealing with the data model, in particular the TTree class, TProcessExecutor can tackle more generic problems thanks to its MapReduce model.</p>
+<p>The combination of these new features allows a new kind of workflow in which we are not tied to multiprocessing from start to end. Instead, we can run our program sequentially until it is switched to a multiprocessing mode to perform a MapReduce operation on the data, and then gather the results and continue executing the code on a single core.</p>
+<p>As a performance enhancement over the requirements set by TExecutor, the TProcessExecutor&rsquo;s <code>MapReduce</code> call implements the greedy worker paradigm. In this operation mode, instead of processing a task and returning the processed result, workers continue drawing tasks from the queue and processing them until all work has been consumed. Then, they perform a partial reduction and send the result to the parent for a final reduction of all the partial results, using ROOT I/O for communication.</p>
+<h2 id="44-tthreadexecutor">4.4 TThreadExecutor<a class="anchor" href="#44-tthreadexecutor">#</a></h2>
+<p>TThreadExecutor<sup id="fnref:6"><a href="#fn:6" class="footnote-ref" role="doc-noteref">6</a></sup> is a task-oriented, multithreaded MapReduce for ROOT that provides a simple programming model for multithreaded MapReduce operations on decoupled-data based loops. It implements the programming model defined by TExecutor, which means that, as Listing 4.2 exemplifies, it shares TProcessExecutor&rsquo;s public interfaces.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> mapFunc </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> UInt_t </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">i){</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> i</span><span style="color: #FF79C6">+</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> reduceFunc </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">vector</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">UInt_t</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mapV){</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">accumulate(mapV.begin(), mapV.end());</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TThreadExecutor pool;</span>
+<span style="color: #F8F8F2">pool.MapReduce( mapFunction, ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TSeq</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD">int</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(</span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">), reductionFunction);</span>
+</code></pre></div>
+<p><em><strong>Listing 4.2</strong>: TProcessExecutor and TThreadExecutor interfaces are mostly interchangeable.</em></p>
+<p>TThreadExecutor is built on top of Intel&rsquo;s Threading Building Blocks (TBB) library, and in particular, its <code>parallel_for</code> and <code>parallel_reduce</code> instructions. TBB provides several useful features, such as eﬃcient load balancing, parallel algorithms, and a powerful and configurable interface for task-based multithreading. Unlike alternatives such as OpenMP or POSIX threads, TBB is a cross platform library that doesn&rsquo;t require compiler support and oﬀers support for complex parallel patterns and concurrent data structures.</p>
+<p>TBB implements load balancing by relying on work stealing<sup id="fnref:7"><a href="#fn:7" class="footnote-ref" role="doc-noteref">7</a></sup> instead of distributing the tasks evenly among the threads. In this scheme, each thread has a limited task queue that is processed sequentially. The remaining tasks after the initial distribution are kept in a common pool of tasks. If a thread completes the processing of all tasks in its queue, but there still exist tasks in the task pool, it will withdraw them from there and add them to its queue. If the task pool is empty, it will try to steal from the queue of other threads. Finally, if there are no tasks available for stealing, it will remain idle until the other threads complete their work. This mechanism minimizes the time a thread spends idle.</p>
+<p>On initialization, TBB creates a pool containing the maximum number of threads supported by the system, which is governed from <code>tbb::task_scheduler</code><sup id="fnref:8"><a href="#fn:8" class="footnote-ref" role="doc-noteref">8</a></sup>. This task scheduler creates an implicit task arena<sup id="fnref:9"><a href="#fn:9" class="footnote-ref" role="doc-noteref">9</a></sup> where threads may share and execute tasks, allowing the specification of the maximum number of threads to be executed simultaneously. Two task schedulers can only co-exist if they have been instantiated from diﬀerent user threads. This is important, for example, for resource-allocated asynchronous execution and manual load balancing. By default, ROOT treats TBB&rsquo;s task scheduler as a singleton, controlled by TPoolManager (Section <a href="#45-tpoolmanager">4.5</a>). TThreadExecutor allows for another degree of customization, handling a subset of the threads initialized by the scheduler through a task arena. This allows for concurrent execution of multiple TThreadExecutors by assigning a subset of the total resources to each one.</p>
+<p>TThreadExecutor extends the TExecutor interfaces with two useful features:</p>
+<ul>
+<li><p><strong>Chunking</strong>: By default, Map evaluates the mapping function once per element in the input data. If these data is composed of a large number of elements, and the user does not partition it, this becomes ineﬃcient both spatially (we need to generate a large return <code>std::vector</code>) and temporally (e.g. if the mapping function evaluation is short we have too much task overhead). To address this problem, TThreadExecutor introduces the concept of chunking. The input data is divided into <em>N</em> chunks, specified by the user, and the tasks are evaluated over each one of these chunks&mdash;i.e. several data points at a time&mdash;applying reduction after each data chunk is processed.</p></li>
+<li><p><strong>Parallel Reduction</strong>: If the user provides a binary function, the reduction step is parallelized by spawning a binary tree with the elements to process, and parallelizing the evaluation starting from the leaves. This interface is only available if the reduction function evaluates on <code>double</code> or <code>float</code> types in order to reduce complexity adjusting to the ROOT user needs.</p></li>
+</ul>
+<p>Currently, TThreadExecutor is used in ROOT fitting to compute the maximum likelihood and the least squares functions in parallel. In TMVA<sup id="fnref:10"><a href="#fn:10" class="footnote-ref" role="doc-noteref">10</a></sup>, it is utilized to train BDTs, by parallelizing the loss function; and DNNs, by parallelizing the internal matrix operations. It is also applied for performing implicitly multithreaded operations in ROOT I/O (reading, parallel writing, de-serialization and decompression of tree branches in parallel) and in the parallel execution of functional chains in RDataFrame<sup id="fnref:11"><a href="#fn:11" class="footnote-ref" role="doc-noteref">11</a></sup>.</p>
+<h2 id="45-tpoolmanager">4.5 TPoolManager<a class="anchor" href="#45-tpoolmanager">#</a></h2>
+<p>ROOT provides two modes for expressing thread-based parallelism: implicit and explicit. In implicit multithreading (IMT), users write sequential code using ROOT interfaces and ROOT parallelizes its execution. Many common operations in ROOT adhere to IMT and, while for the moment IMT is not enabled by default, activating this functionality only requires a call to <code>ROOT::EnableImplicitMT()</code> (Listing 4.3).</p>
+<p>With explicit multithreading, the user explicitly states which operations should be parallelized and how. ROOT provides several classes for the expression of parallelism, for example, by using locks (e.g. TMutex, TReadWriteLock, TCondition), by employing thread locality mechanisms (TThreadedObject), or by applying multithreaded patterns (TThreadExecutor).</p>
+<p>The user may need a mixed solution for those cases requiring additional flexibility, such as parallelizing interfaces still not available in IMT; or employing user-generated multithreaded code, e.g. via TThreadExecutor, that makes use of the same common TBB scheduler. For reliability, we need to solve the interoperability problems that may arise in these scenarios.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #F8F8F2">  </span><span style="color: #6272A4">// First enable implicit multi-threading globally, so that the implicit parallelisation is on.</span>
+<span style="color: #F8F8F2">  ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">EnableImplicitMT();</span>
+
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// Open the file containing the tree</span>
+<span style="color: #F8F8F2">  TFile </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">file </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> TFile</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Open(</span><span style="color: #BD93F9">"tree.root"</span><span style="color: #F8F8F2">);</span>
+
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// Get the tree</span>
+<span style="color: #F8F8F2">  TTree </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">tree </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD; font-style: italic">nullptr</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">  file</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">GetObject</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">TTree</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(</span><span style="color: #BD93F9">"tree_0"</span><span style="color: #F8F8F2">, tree);</span>
+
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// Read the branches in parallel.</span>
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// Note that the interface does not change, the parallelisation is internal</span>
+<span style="color: #F8F8F2">  </span><span style="color: #FF79C6">for</span><span style="color: #F8F8F2"> (Long64_t i </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">; i </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> tree</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">GetEntries(); </span><span style="color: #FF79C6">++</span><span style="color: #F8F8F2">i) {</span>
+<span style="color: #F8F8F2">     tree</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">GetEntry(i);  </span><span style="color: #6272A4">// parallel read</span>
+<span style="color: #F8F8F2">  }</span>
+
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// IMT can be also disabled globally.</span>
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// As a result, no tree will run GetEntry in parallel from now on</span>
+<span style="color: #F8F8F2">  ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">DisableImplicitMT();</span>
+
+<span style="color: #F8F8F2">  </span><span style="color: #6272A4">// This is sequential: the global flag is disabled</span>
+<span style="color: #F8F8F2">  </span><span style="color: #FF79C6">for</span><span style="color: #F8F8F2"> (Long64_t i </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">; i </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> tree</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">GetEntries(); </span><span style="color: #FF79C6">++</span><span style="color: #F8F8F2">i) {</span>
+<span style="color: #F8F8F2">     tree</span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2">GetEntry(i);  </span><span style="color: #6272A4">// sequential read</span>
+<span style="color: #F8F8F2">  }</span>
+</code></pre></div>
+<p><em><strong>Listing 4.3</strong>: Simplified example from the multicore tutorials in ROOT showcasing implicit multithreading.</em></p>
+<p>To tackle these problems, we developed the new internal class TPoolManager to handle the TBB library scheduler. It acts as a common interface to TBB&rsquo;s task scheduler for all thread-based parallelization in ROOT, providing shared ownership, reference counting, and automatic destruction and termination when the scheduler is idle.</p>
+<p>Due to TBB restrictions, once the TBB scheduler is active, the number of active threads cannot be changed. Because of that, all instances pointing to the TPoolManager scheduler will need to be destroyed before the pool of threads can be initialized again.</p>
+<p>TPoolManager grants the following advantages:</p>
+<ul>
+<li><p>Provides a unique interface to the TBB scheduler: TThreadExecutor, IMT and any class relying on TBB will get a pointer to the scheduler through <code>TPoolManager::GetScheduler()</code>, which will return a reference to the only pointer to the TBB scheduler that will be active in any ROOT process.</p></li>
+<li><p>Solves multiple undefined behaviors. Guaranteeing that all classes use the same multithreading scheduler avoids interferences and undefined behavior by providing a single instance of the scheduler and automated bookkeeping, initialization and destruction.</p></li>
+</ul>
+<h2 id="46-task-granularity-analysis">4.6 Task granularity analysis<a class="anchor" href="#46-task-granularity-analysis">#</a></h2>
+<p>Dividing the work at thread-level in the traditional way, that is, in as many partitions as processing units there exist, has a drawback: if, for instance, some of the partitions complete their part of the work earlier than others, the corresponding processing units will remain idle, waiting for the remaining ones to finish, and leading to a suboptimal exploitation of the hardware resources. However, we can mitigate the time workers spend in idle state due to an unbalanced distribution of the workload by reducing the granularity of the data partitions.</p>
+<p>In this section, we analyze the impact that the number of partitions has on the performance when parallelizing a job with ROOT&rsquo;s executors. Our analysis is executed over diﬀerent sizes of data and increasing number of processing units, for both TProcessExecutor and TThreadExecutor. In all cases, we increase the number of tasks to execute exploiting the built-in chunking mechanism of these classes, moving progressively from coarse-grained partitions, when the workload is divided in as many partitions as processing units available, to the most fine-grained division, with one task per data element.</p>
+<p>For the following experiment, we designed a benchmark consisting of the conditional evaluation of two diﬀerent implementations of the Vavilov probability distribution function&mdash;fast and accurate&mdash;which provides with a simple way to introduce imbalance in the execution time for the chunks. The fast implementation of the Vavilov probability density function<sup id="fnref:12"><a href="#fn:12" class="footnote-ref" role="doc-noteref">12</a></sup> is about 5 times faster for the calculation of the distribution function, while its accurate implementation<sup id="fnref:13"><a href="#fn:13" class="footnote-ref" role="doc-noteref">13</a></sup> sacrifices speed for correctness. We perform the evaluation of the Vavilov fast function on the positive values of a given data set, and the Vavilov accurate evaluation on the negative values of the same data set. Listing 4.4 displays the code to perform our benchmark with an explicitly chunked MapReduce operation with TThreadExecutor, given a container of data, <code>data</code>, and a number of chunks, <code>nChunks</code>.</p>
+<p>This benchmark was executed on a Intel Core i7-4790 desktop server with 4 physical cores (8 logical threads) at 3.6 GHz and 8 GB of RAM<sup id="fnref:14"><a href="#fn:14" class="footnote-ref" role="doc-noteref">14</a></sup>, each core supporting hyperthreading, over two diﬀerent data sets, both of them featuring unbalanced executions. The first data set is generated randomly following a Gaussian distribution with &sigma; = 1, &mu; = &minus;0.25 for the first third of data elements; &sigma; = 1, &mu; = 0.25, for the second third; and &sigma; = 1, &mu; = &minus;0.655 for the remaining third. The measurements were timed with the C++ standard high resolution clock, in several consistent executions with low variation, and then averaged and used to compute the speedup with respect to the sequential execution time measured.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">// (... variable initialization: data, nChunks)</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Math</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">VavilovAccurate </span><span style="color: #50FA7B">vavilovAc</span><span style="color: #F8F8F2">(</span><span style="color: #FFB86C">0.3</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">0.5</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Math</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">VavilovFast </span><span style="color: #50FA7B">vavilovFast</span><span style="color: #F8F8F2">(</span><span style="color: #FFB86C">0.3</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">0.5</span><span style="color: #F8F8F2">);</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> mapFunction </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">data, </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">vavilovAc, </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">vavilovFast](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> i){</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> data[i]</span><span style="color: #FF79C6">&gt;</span><span style="color: #FFB86C">0</span><span style="color: #FF79C6">?</span><span style="color: #F8F8F2"> vavilovAc.Pdf(data[i]) </span><span style="color: #FF79C6">:</span><span style="color: #F8F8F2"> vavilovFast.Pdf(data[i]);</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> redFunction </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">vector</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD">double</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> vec){</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">accumulate(vec.begin(), vec.end(), </span><span style="color: #FFB86C">.0</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">};</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TThreadExecutor </span><span style="color: #50FA7B">threadPool</span><span style="color: #F8F8F2">(nThreads);</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> res </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> threadPool.Map(mapFunction, ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TSeqU(data.size()), redFunction, nChunks);</span>
+</code></pre></div>
+<p><em><strong>Listing 4.4</strong>: Example code of our benchmark computing the Vavilov probability density function in its fast implementation for negative values of the data, and its accurate implementation for positive values of the same data.</em></p>
+<p>Figure 4.1 displays the speed ups obtained for diﬀerent sizes of the data set when using a diﬀerent number of threads (including hyperthreading) in TThreadExecutor, increasing the number of data partitions in each case. For 100 points, the execution time is dominated by the task creation overhead, causing a slowdown in the total execution time, independently of the number of data partitions. The performance improves as we increase the dataset size until it stabilizes. There we observe significant speed ups, which improve slightly until, again, the task overhead negatively aﬀects the execution time when dealing with smaller tasks.</p>
+<p>This example exhibits higher performances when exploiting hyperthreading. With this option enabled we observe a gradual, more pronounced improvement in performance, reaching up to a remarkable 45% higher speed up than its non-hyperthreaded counterpart. However it exhibits a more sharp decline in speed up when the task creation overhead starts to be noticeable.</p>
+<p>Figure 4.2 shows the results obtained for a multiprocessing execution with TProcessExecutor of the same example. While a multiprocessing execution is more useful in several contexts (e.g. when performing non thread-safe operations), and the results display a fair speed up for big data sets, the task overhead introduced by TProcessExecutor is several orders of magnitude larger than that of TThreadExecutor, requiring a greater amount of work for the acceleration to be noticeable. For this same reason, the plots in Figure 4.2 exhibit an earlier decline of performance with a higher number of tasks.</p>
+<p>The near-optimal speed up we obtain in the theoretically most unbalanced case (dividing the workload into as many tasks as processing units), seems to indicate that the data set may not be unbalanced enough to observe dramatic improvements when tuning task granularity. We observe this situation in a performance trace produced using Intel&rsquo;s Vtune Amplifier 2018, where we visualize the performance trace of an execution of our benchmark with 800 million points, 4 processing units, and 4 tasks for both TProcessExecutor and TThreadExecutor. The green color in the timeline indicates process running time, the brown graphs represent the CPU time, and the red spikes correspond to spin and overhead time, indicating synchronization areas. A second trace, with the same parameters but an increase in the number of tasks to 8000, demonstrates an improvement in workload balancing.</p>
+<p>The second data set, which is more extremely unbalanced, is composed of two distinct parts: the first two thirds of the data set evaluate the fast version of the Vavilov distribution, and the remaining third performs the accurate evaluation. This case exhibits a more accentuated imbalance among the processing units: the main thread, after completing the execution of its assigned tasks, spends a noticeable amount of time in a locked state, spinning while it waits for the remaining threads to complete their work. Again, increasing the number of tasks to 8000 provides a better balanced example of the same execution.</p>
+<p>Figures 4.7 and 4.8 present the results of executing our benchmark with this second data set. For the multithreaded and the multiprocessed cases, they respectively display the increase in speed up when varying task granularity in diﬀerent configuration pairs of number of threads and size of the workload. In this case, we observe an earlier steeper increase in speed up for the higher values of the chunk size, indicating the convenience of splitting tasks into smaller partitions. For the largest workloads, we perceive a gradual decrease in speed up caused by excessive fine-graining of the tasks, yielding an execution time that is dominated by the task overhead. The multiprocessed case exhibits, again, an earlier decay of the speed up due to the higher task overhead inherent to a multiprocess solution.</p>
+<p>These results support the importance of an adequate task size and showcase the impact it has on parallel performance for unbalanced workloads. Moreover, they indicate that granularity has to be treated diﬀerently for the multithreaded and the multiprocessed cases, keeping task creation overhead in mind.</p>
+<h2 id="47-a-numa-aware-executor"><span id="hadd-unused"></span>4.7 A NUMA-aware executor<a class="anchor" href="#47-a-numa-aware-executor">#</a></h2>
+<p>For convenience, modern high-end, many-core processors often adopt multi-socket designs, in which each socket is a processor package composed of multiple cores with dedicated physical RAM and integrated memory controllers. Despite the clear advantages of this approach in terms of modularity and scalability, these architectures may exhibit undesirable eﬀects resulting from non-uniform memory accesses (NUMA).</p>
+<p>We refer to these undesirable consequences as NUMA eﬀects: negative impacts on performance (e.g. increased latency, bandwidth overload) resulting from remote memory accesses in a heterogeneous memory hierarchy. These negative eﬀects are easily observable in multithreaded operations where there coexist several tasks accessing the same block of memory concurrently from diﬀerent sockets or NUMA domains.</p>
+<p>In ROOT, TThreadExecutor shares a common pool of tasks, where the diﬀerent threads of the system draw the next item to process once their task queue is depleted. These tasks are most frequently tied to a partition of the data, where the mapping function will be applied. The data may be stored in one of the NUMA domains or shared between them, depending on the size and the locality of the writing or reading policy. Frequently, threads are responsible for the creation of tasks which require accesses to memory of a remote domain. This memory is brought to the shared cache of the socket and fetched by the higher-level caches for faster accesses to data. If several misses on the last-level cache, shared between threads, occur, this will cause frequent accesses to remote memory and, therefore, may overload the interconnection.</p>
+<p>In addition, we cannot currently pin tasks to specific threads. Even if we could, it is not possible to assert that this would be the optimal solution. Threads can execute in any of the processors (in the case of TBB, they may even switch execution between processors dynamically), and it might happen that data is moved from one NUMA node to another in order to increase the locality access and, as a consequence, decrease aggregate bandwidth usage, latency, and NUMA eﬀects overall.</p>
+<p>To address the common problem of NUMA eﬀects, we have developed a new NUMA-aware hybrid multiprocess-multithread executor for handling multithreaded operations in NUMA architectures. First, we split the MapReduce processing, by means of TProcessExecutor, into as many partitions as NUMA domains exist in the system, and we distribute the work among them. The execution of each partition is restricted to a set of cores belonging to the same NUMA node; that is, each processing unit execution is confined to a NUMA domain. Each task will then be split following the typical multithreaded strategy with TThreadExecutor. Each TThreadExecutor internal to the TProcessExecutors&rsquo; tasks generates its own independent pool of threads that are only able to execute tasks in the NUMA node to which they are confined.</p>
+<p>Libnuma<sup id="fnref:15"><a href="#fn:15" class="footnote-ref" role="doc-noteref">15</a></sup> is the library that manages the restricted execution of processes in a NUMA node. In our case, we employ its <code>numa_max_node()</code> directive to obtain the number of NUMA nodes in the system, and the <code>numa_run_on_node(int i)</code> and <code>numa_run_on_node_mask(numa_all_nodes_ptr)</code> directives to modify the scope of the execution.</p>
+<p>Listing 4.5 displays a code snippet extracted from the TNUMAExecutor class, implementing the process described above. The instantiation and execution of TProcessExecutor uses <code>fNDomains = numa_max_node()+1</code> worker units and <code>fNDomains</code> tasks (described by the sequence <code>TSeq(fNDomains)</code>) that execute the C++ lambda <code>runOnNode</code>. This lambda receives the task index (the same as the domain index in our case) and commences by restricting its execution to the corresponding domain. This restriction is lifted in the last instruction of the lambda before returning. In between, it instantiates and executes a NUMA domain specific TThreadExecutor, allowing the specification of the chunking granularity.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">template&lt;class</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">F</span><span style="color: #F8F8F2">, </span><span style="color: #FF79C6">class</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">R</span><span style="color: #FF79C6">&gt;</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> TNUMAExecutor</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">MapReduce(F func, </span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> nTimes, R redfunc,</span>
+<span style="color: #F8F8F2">                                </span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> nChunks) </span><span style="color: #FF79C6">-&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">result_of</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">F()</span><span style="color: #FF79C6">&gt;::</span><span style="color: #F8F8F2">type</span>
+<span style="color: #F8F8F2">{</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> runOnNode </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">](</span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">int</span><span style="color: #F8F8F2"> i) {</span>
+<span style="color: #F8F8F2">      numa_run_on_node(i);</span>
+<span style="color: #F8F8F2">      ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TThreadExecutorImpl pool{fDomainNThreads};</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> res </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> nChunks</span><span style="color: #FF79C6">?</span>
+<span style="color: #F8F8F2">                    pool.MapReduce(func, nTimes, redfunc, nChunks</span><span style="color: #FF79C6">/</span><span style="color: #F8F8F2">fNDomains) </span><span style="color: #FF79C6">:</span>
+<span style="color: #F8F8F2">                    pool.MapReduce(func, nTimes, redfunc);</span>
+<span style="color: #F8F8F2">      numa_run_on_node_mask(numa_all_nodes_ptr);</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> res;</span>
+<span style="color: #F8F8F2">   };</span>
+
+<span style="color: #F8F8F2">   ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TProcessExecutor </span><span style="color: #50FA7B">proc</span><span style="color: #F8F8F2">(fNDomains);</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> proc.MapReduce(runOnNode, ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TSeqU(fNDomains), redfunc);</span>
+<span style="color: #F8F8F2">}</span>
+</code></pre></div>
+<p><em><strong>Listing 4.5</strong>: Example of the interaction of libnuma, TProcessExecutor and TThreadExecutor, corresponding to TNUMAExecutor&rsquo;s N-execution MapReduce overload.</em></p>
+<p>To benchmark TNUMAExecutor, we performed an unbinned fit (Listing 4.6) of the diphoton invariant mass distribution resulting from a Higgs boson, with an analytically computed integral. This parallelization analysis is performed in the <a href="/blog/cern/root_fitting/#65-case-example-a-typical-fit">Case example</a> section of the article on the parallelization of the fit, but here we focus on the monitoring and potential decrease of the NUMA eﬀects. To augment the probability of observing uncore events<sup id="fnref:16"><a href="#fn:16" class="footnote-ref" role="doc-noteref">16</a></sup> (i.e. events that occur outside of the processor such as remote memory accesses), we fit an amount of data that doubles the size of the last-level cache of a NUMA domain. This way we are more likely to observe cache misses at the last-level cache of a NUMA node, as data must be fetched from memory which is potentially stored in another domain.</p>
+<p>This fit is benchmarked on a Intel Xeon E5-2683 v3<sup id="fnref:17"><a href="#fn:17" class="footnote-ref" role="doc-noteref">17</a></sup> server composed of two NUMA domains with 14 physical cores and 28 logical threads each at 2.00 GHz with 32 GB of RAM per NUMA node. Each NUMA domain of the system has a last-level cache of 35 MB, which implies that fitting over 9.5 million (double precision) data points should be suﬃcient to provoke a considerable number of NUMA eﬀects.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">func</span><span style="color: #F8F8F2">(</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">params)</span>
+<span style="color: #F8F8F2">{</span>
+<span style="color: #F8F8F2">    </span><span style="color: #6272A4">//... Model function</span>
+<span style="color: #F8F8F2">}</span>
+
+<span style="color: #6272A4">// Enable implicit multithreading</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">EnableImplicitMT();</span>
+
+<span style="color: #F8F8F2">TF1 f(</span><span style="color: #BD93F9">"model"</span><span style="color: #F8F8F2">, func, </span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">200</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">4</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">f.SetParameters(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1000</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">7.5</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1.5</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Math</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">WrappedMultiTF1 </span><span style="color: #50FA7B">wF</span><span style="color: #F8F8F2">(f, f.GetNdim());</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Fit</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">UnBinData </span><span style="color: #50FA7B">dataSB</span><span style="color: #F8F8F2">(nPoints);</span>
+<span style="color: #FF79C6">for</span><span style="color: #F8F8F2"> (</span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> i </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">; i </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> nPoints; </span><span style="color: #FF79C6">++</span><span style="color: #F8F8F2">i) dataSB.Add(f.GetRandom());</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Fit</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Fitter fitter;</span>
+<span style="color: #F8F8F2">fitter.SetFunction(wF, </span><span style="color: #8BE9FD; font-style: italic">false</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">fitter.Fit(data, </span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">);</span>
+</code></pre></div>
+<p><em><strong>Listing 4.6</strong>: Implicitly parallel unbinned fit of a model function.</em></p>
+<p>In an attempt to observe and quantify NUMA eﬀects, from all the uncore events available, we choose to monitor and record, with 1 second samples, the DIMM<sup id="fnref:18"><a href="#fn:18" class="footnote-ref" role="doc-noteref">18</a></sup> page misses in the DDR memory controller; that is, the number of requests to remote RAM memory. Running the benchmark with 14 threads to fit 9.5 million data points, we notice that TNUMAExecutor exhibits a considerable improvement with respect to fitting via the plain TThreadExecutor. Figure 4.9 compares the number of remote memory accesses monitored with and without the NUMA executor, by displaying the distribution density of these accesses. We can infer that our choices of benchmark and uncore events were appropriate as, by using TNUMAExecutor, we observe a 28.09% reduction in the average number of page misses in the memory controller, and we obtain a 1.89 times improvement in the execution time (Table 4.1).</p>
+<table>
+<thead><tr><th></th><th>TThreadExecutor</th><th>TNUMAExecutor</th><th>Improvement</th></tr></thead>
+<tbody>
+<tr><td>Execution time (s)</td><td>465.16</td><td>246.43</td><td>1.89</td></tr>
+<tr><td>Accesses to remote memory/s</td><td>27.66</td><td>19.89</td><td>1.39</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 4.1</strong>: Comparison of the execution times before and after substituting TThreadExecutor by TNUMAExecutor and speed up in the later case.</em></p>
+<p>Unfortunately, due to the implicit use of multiprocessing in TNUMAExecutor, we cannot simply replace TThreadExecutor by TNUMAExecutor. If so, these promising results would be hindered by the overhead introduced by TProcessExecutor. In Figure 4.10 we analyze the convenience of using TNUMAExecutor for an increasing number of threads of the system, and an increasing amount of data points. By reducing the problem and performing single evaluations of the objective function, in this problem the maximum likelihood, instead of a complete fitting minimization process, we conclude that it is only convenient to rely on TNUMAExecutor when the size of our data is of the same magnitude of the last level cache, 35 MB, in this case <em>O</em>(10<sup>6</sup>). Finally, for large datasets, we notice a large gap in speed up with respect to TThreadExecutor between the hyperthreaded and the non hyperthreaded case. This indicates that employing hyperthreading helps to mitigate the observed NUMA eﬀects in this case when employing only TThreadExecutor.</p>
+<h2 id="48-conclusions">4.8 Conclusions<a class="anchor" href="#48-conclusions">#</a></h2>
+<p>This chapter introduces the executors, a performant set of tools to exploit task-level parallelism in ROOT-based analyses. The executors are ROOT classes implementing the parallel MapReduce, identified as one of the most frequent patterns in ROOT analyses.</p>
+<p>These easily-deployable classes provide a set of common interfaces that hide the complexity of concurrent programming from the user. We factored out the MapReduce functionality of TPool, the precursor of the executors, into TProcessExecutor, ROOT&rsquo;s multiprocess executor. We then defined and implemented TThreadExecutor, a multithreaded executor leveraging TBB as a backend, and abstracted the executors&rsquo; common interfaces into TExecutor. The Executors provide good performance and an improved programming model. On the other hand, they require adapting the parallel analysis to avoid synchronization and, in the multithreaded case, thread-local storage and thread race conditions.</p>
+<p>We benchmarked and analyzed the executors&rsquo; performance and demonstrated the benefits derived from tuning task granularity with the chunking interfaces of TProcessExecutor and TThreadExecutor when dealing with unbalanced workloads. TThreadExecutor exhibits close to ideal performance, higher than TProcessExecutor, which experiences a larger task overhead inherent to a multiprocessed implementation, of <em>O</em>(10<sup>-3</sup> s) compared to <em>O</em>(10<sup>-7</sup> s) for TBB tasks in TThreadExecutor. Thanks to its lower task overhead and the work stealing mechanisms provided by TBB, TThreadExecutor exhibits an earlier balancing of the workload when increasing the number of tasks and a later decay in performance. TProcessExecutor showcases good speed up as well, but it requires a larger amount of data to do so.</p>
+<p>In addition, with TPoolManager, a single point of management for the TBB pool of threads, we successfully introduced a solution for undefined behaviours arising from interactions between the implicit and explicit multithreaded modes of ROOT.</p>
+<p>Finally, we provided an executor for NUMA architectures. By combining TProcessExecutor with TThreadExecutor and concealing the execution of the latter in each NUMA domain via libnuma, we reduce the impact of NUMA eﬀects in performance. This new executor, TNUMAExecutor, diminishes the number of uncore events monitored when dealing with sizeable data, up to a remarkable 30% less when performing a fit in a NUMA machine with two NUMA domains of 14 cores (+14 hyperthreaded). As a result, this example displays a speed up to 1.8x against the baseline TThreadExecutor execution.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote"><p>Wikipedia contributors. Dennard scaling. <a href="https://en.wikipedia.org/wiki/Dennard_scaling">https://en.wikipedia.org/wiki/Dennard_scaling</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:2" role="doc-endnote"><p>Marc Bohr. A 30 year retrospective on Dennard&rsquo;s MOSFET scaling paper. <a href="http://www.eng.auburn.edu/~agrawvd/COURSE/READING/LOWP/Boh07.pdf">link</a>, 2007. [Online; accessed 2-September-2018]. <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:3" role="doc-endnote"><p>Dean, J., &amp; Ghemawat, S. (2008). MapReduce: simplified data processing on large clusters. <em>Communications of the ACM, 51</em>(1), 107-113. <a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:4" role="doc-endnote"><p>Bellenot, B., Brun, R., Ganis, G., Iwaszkiewicz, J., Kickinger, G., Peters, A. J., Rademakers, F., Ballintijn, M., Loizides, C., Reed, C., &amp; Feichtinger, D. (2006). PROOF &ndash; the parallel ROOT facility. In <em>2006 15th IEEE International Conference on High Performance Distributed Computing</em> (pp. 379-380). <a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:5" role="doc-endnote"><p>Guiraud, E., &amp; Ganis, G. (2015). Enhancements to Multiprocessing in ROOT. <a href="https://doi.org/10.5281/zenodo.31854">https://doi.org/10.5281/zenodo.31854</a> <a href="#fnref:5" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:6" role="doc-endnote"><p>Canal, P., Ganis, G., Guiraud, E., Mato Vila, P., Moneta, L., Piparo, D., Tejedor, E., &amp; Valls Pla, X. Expressing Parallelism in ROOT. <em>22nd International Conference on Computing in High Energy and Nuclear Physics</em>. IOP, in press. <a href="#fnref:6" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:7" role="doc-endnote"><p>Intel. Intel Threading Building Blocks documentation &ndash; scheduling algorithm. <a href="https://software.intel.com/en-us/node/506295">link</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:7" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:8" role="doc-endnote"><p>Intel. Intel Threading Building Blocks documentation &ndash; task scheduler. <a href="https://software.intel.com/en-us/node/506294">link</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:8" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:9" role="doc-endnote"><p>Intel. Intel Threading Building Blocks documentation &ndash; task arena class. <a href="https://software.intel.com/en-us/node/506359">link</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:9" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:10" role="doc-endnote"><p>Hoecker, A., Speckmayer, P., Stelzer, J., Therhaag, J., von Toerne, E., Voss, H., et al. (2007). TMVA &ndash; Toolkit for multivariate data analysis. <em>arXiv preprint physics/0703039</em>. <a href="#fnref:10" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:11" role="doc-endnote"><p>Guiraud, E., Naumann, A., &amp; Piparo, D. (2017). TDataFrame: functional chains for ROOT data analyses. <a href="https://doi.org/10.5281/zenodo.260230">https://doi.org/10.5281/zenodo.260230</a> <a href="#fnref:11" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:12" role="doc-endnote"><p>Rotondi, A., &amp; Montagna, P. (1990). Fast calculation of Vavilov distribution. <em>Nuclear Instruments and Methods in Physics Research Section B: Beam Interactions with Materials and Atoms, 47</em>(3), 215-223. <a href="#fnref:12" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:13" role="doc-endnote"><p>Schorr, B. (1973). Programs for the Landau and the Vavilov distributions and the corresponding random numbers. <em>Comput. Phys. Commun., 7</em> (CERN-DD-73-26), 215-24. <a href="#fnref:13" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:14" role="doc-endnote"><p>Intel. Intel Core i7-4790 Processor. <a href="https://ark.intel.com/products/80806/">link</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:14" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:15" role="doc-endnote"><p>Andi Kleen, SUSE Labs. numactl. <a href="https://github.com/numactl/numactl">https://github.com/numactl/numactl</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:15" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:16" role="doc-endnote"><p>Wikipedia contributors. Uncore. <a href="https://en.wikipedia.org/wiki/Uncore">https://en.wikipedia.org/wiki/Uncore</a>, 2017. [Online; accessed 2-September-2018]. <a href="#fnref:16" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:17" role="doc-endnote"><p>Intel. Intel Xeon Processor E5-2683 v3. <a href="https://ark.intel.com/products/81055/">link</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:17" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:18" role="doc-endnote"><p>Wikipedia contributors. DIMM. <a href="https://en.wikipedia.org/wiki/DIMM">https://en.wikipedia.org/wiki/DIMM</a>, 2018. [Online; accessed 2-September-2018]. <a href="#fnref:18" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+<li id="fn:20" role="doc-endnote"><p>We define several levels of parallelism depending on the work distributed across several processing units for parallel execution: instruction-level parallelism, parallelizing instructions of the same stream; task-level parallelism, parallelizing tasks of the same application; data-level parallelism, parallelizing multiple data on single instructions; and transaction-level parallelism, parallelizing several transactions. <a href="#fnref:20" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p></li>
+</ol>
+</section>
+
+
+          </article>
+
+
+<ul class="tags__list">
+
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/root/">root</a>
+    </li></ul>
+
+ <div class="pagination">
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/root/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">ROOT</span>
+    </a>
+
+
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/dlp/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Data-level parallelism</a>
+    </a>
+
+</div>
+
+
+          <footer class="post__footer">
+            <div class="social-icons">
+
+
+
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+
+      <div class="toc-container">
+
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#41-the-event-processing-paradigm-and-task-level-parallelism">4.1 The event-processing paradigm and task-level parallelism</a></li>
+        <li><a href="#42-texecutor-a-mapreduce-for-root">4.2 TExecutor: a MapReduce for ROOT</a></li>
+        <li><a href="#43-tprocessexecutor">4.3 TProcessExecutor</a></li>
+        <li><a href="#44-tthreadexecutor">4.4 TThreadExecutor</a></li>
+        <li><a href="#45-tpoolmanager">4.5 TPoolManager</a></li>
+        <li><a href="#46-task-granularity-analysis">4.6 Task granularity analysis</a></li>
+        <li><a href="#47-a-numa-aware-executor">4.7 A NUMA-aware executor</a></li>
+        <li><a href="#48-conclusions">4.8 Conclusions</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+
+    </div>
+
+
+  </main>
+
+
+
+
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+
+
+
+
+    <script src="/js/table-of-contents.js"></script>
+
+
+
+</body>
+
+</html>

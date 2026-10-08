@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>Data-level parallelism | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+  
+  
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+  
+  
+    
+ 
+  
+  
+  
+  
+  
+  
+    
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+  
+    
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+  
+  
+   
+   
+    
+
+<script type="application/ld+json">
+  
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "Data-level parallelism",
+      "headline" : "Data-level parallelism",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2019",
+      "datePublished": "2019-08-29 14:40:07 \u002b0200 CEST",
+      "dateModified" : "2019-08-29 14:40:07 \u002b0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/dlp\/",
+      "wordCount" : "4233",
+      "keywords" : ["Blog"]
+    }
+  
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+ 
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+    
+    
+      <li>
+        <a  href="/">about</a>
+      </li>
+    
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+    
+  </ul>
+</nav>
+
+
+  <main>
+    
+    
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">Data-level parallelism</h1>
+            <time datetime="2019-08-29 14:40:07 &#43;0200 CEST" class="post__date">Aug 29 2019</time> 
+          </header>
+          <article class="post__content">
+              
+<section class="warning_block"> <p>This article is part of a series that I'm slowly publishing, and it still has several broken links referencing unpublished articles.</p></section>
+<p>In addition to task-level parallelism, where we distribute the workload between the multiple cores or processors of a system, we can further parallelize the computations performed in each core by taking advantage of data-level parallelism. Modern architectures support diﬀerent SIMD instruction sets that enable us to capitalize on the larger CPU registers existing in current computers to perform simultaneous operations on multiple data elements.</p>
+<p>This article describes the work done to introduce data-level parallelism in the mathematical libraries of ROOT. Section <a href="#51-vectorization">5.1</a> discusses the concept of vectorization and describes some of its common pitfalls. Section <a href="#52-veccore">5.2</a> introduces VecCore, the vectorization library we introduce in ROOT to implement SIMD operations, and benchmarks its performance by exploiting SIMD operations to generate Julia sets. We use this same benchmark in Section <a href="#53-generating-julia-fractals-with-tf1">5.3</a>, to analyze the performance of the support for VecCore types evaluation in TF1, the bounded function class in ROOT.</p>
+<h2 id="51-vectorization">5.1 Vectorization<a class="anchor" href="#51-vectorization">#</a></h2>
+<p>Data-level parallelism is achieved in ROOT by exploiting SIMD operations on arrays of data.</p>
+<p>Vectorization allows the loading of several values of a specific type in an SIMD array and the activation of the same operation on them simultaneously. The number of elements that we can operate with at the same time will depend on the set of instructions supported by the architecture and the data type of the elements. Table 5.1 provides a relation of sizes for the most common data types and sets of instructions on Intel x86 architectures.</p>
+<table>
+<thead>
+<tr><th>Instructions</th><th>Array size (bit)</th><th>int (16 bit)</th><th>float (32 bit)</th><th>double (64 bit)</th></tr>
+</thead>
+<tbody>
+<tr><td>SSE</td><td>128</td><td>8</td><td>4</td><td>2</td></tr>
+<tr><td>AVX2</td><td>256</td><td>16</td><td>8</td><td>4</td></tr>
+<tr><td>AVX512</td><td>512</td><td>32</td><td>16</td><td>8</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 5.1</strong>: Relationship between the set of SIMD instructions, the size of the SIMD array supported and the number of elements of each type that fit in it.</em></p>
+<p>For all these benefits, vectorization does not come without pitfalls. Among the problems that may arise when vectorizing, such as wrong type conversions or non-aligned memory, one of the most serious is branching. In the traditional scalar case, a control flow instruction chooses which branch of the code to select based on a condition, and then executes only the set of instructions corresponding to that branch. In SIMD programming, these control flow operations require performing the computations on all branches and, afterwards, assigning their results per element position, depending on a mask filter created when evaluating the condition on an SIMD array. This is a common operation that can have a strong negative impact on performance. Figure 5.1 illustrates these flows for conditional branching.</p>
+<figure>
+    <img src="/media/dlp/filtering.png"
+         alt="Comparison of scalar and SIMD conditional branching"/> <figcaption>
+            <p><em><strong>Figure 5.1</strong>: Comparison of the conditional branching flow between traditional scalar instructions and SIMD instructions.</em></p>
+        </figcaption>
+</figure>
+<p>In addition to these problems inherent to vectorization, there is the question of usability. Vectorization is usually expressed with compiler intrinsics, which do not expose the most user-friendly interfaces. Libraries such as Vc<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup> or UME::SIMD<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup>, while diﬀerent in concept, improve the readability and usability of the code by abstracting these instructions and providing a more familiar and user-friendly interface for the developer. The vectorization library used in ROOT, VecCore, goes one step further and provides an abstraction over these two libraries.</p>
+<p>Despite the disadvantages, vectorization oﬀers enough performance benefits to prefer it over scalar operations.</p>
+<h2 id="52-veccore">5.2 VecCore<a class="anchor" href="#52-veccore">#</a></h2>
+<p>VecCore<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup> provides eﬃcient vectorization on a variety of platforms by oﬀering an abstraction layer on top of the libraries Vc, UME::SIMD and the language extension CUDA<sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup>.</p>
+<p>These three libraries are supported as optional backends as well as a fallback scalar one in case SIMD operations are not available. The users will make their choices depending, for example, on system availability, performance or simple preference.</p>
+<p>VecCore allows the development of architecture-oblivious code that maps to the appropriate backend specific types, methods and instructions. Figure 5.2 displays graphically the most important and recurrent of these instructions, while Listing 5.1 presents its code API.</p>
+<figure>
+    <img src="/media/dlp/veccore-api.png"
+         alt="Graphical depiction of the VecCore API"/> <figcaption>
+            <p><em><strong>Figure 5.2</strong>: Graphical depiction of the VecCore API.</em></p>
+        </figcaption>
+</figure>
+<p><code>Get</code> and <code>Set</code> allow safe read/write access to the individual elements of the SIMD array. Given an iterable container of indices, <code>Scatter</code> will distribute the elements of the SIMD arrays pointed by those indices, while <code>Gather</code> will access the elements referenced by the given indices of the data array and load them into the SIMD array. <code>MaskedAssign</code> and <code>Blend</code> depend on the concept of masking.</p>
+<p>A boolean mask is generated when a condition is applied to an SIMD array. This mask signals which elements of the array fulfill the condition and which do not. <code>MaskedAssign</code> takes the generated mask, a value, and the destination SIMD array as input, and stores the value in the positions given by the true values in the mask. If the value is an SIMD array, the assignment is done element-wise. <code>Blend</code> performs the same operation but takes as an input another value that will be assigned to the elements that do not meet the condition.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">namespace</span><span style="color: #F8F8F2"> vecCore {</span>
+
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">struct</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">TypeTraits</span><span style="color: #F8F8F2">;</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">using</span><span style="color: #F8F8F2"> Mask   </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">TypeTraits</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;::</span><span style="color: #F8F8F2">MaskType;</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">using</span><span style="color: #F8F8F2"> Index  </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">TypeTraits</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;::</span><span style="color: #F8F8F2">IndexType;</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">using</span><span style="color: #F8F8F2"> Scalar </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">TypeTraits</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;::</span><span style="color: #F8F8F2">ScalarType;</span>
+
+<span style="color: #6272A4">// Vector Size</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">constexpr</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">size_t</span><span style="color: #F8F8F2"> VectorSize();</span>
+
+<span style="color: #6272A4">// Get/Set</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> Get(</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v, </span><span style="color: #8BE9FD">size_t</span><span style="color: #F8F8F2"> i);</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">void</span><span style="color: #F8F8F2"> Set(T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v, </span><span style="color: #8BE9FD">size_t</span><span style="color: #F8F8F2"> i, Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> val);</span>
+
+<span style="color: #6272A4">// Load/Store</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">void</span><span style="color: #F8F8F2"> Load(T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v, Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">ptr);</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">void</span><span style="color: #F8F8F2"> Store(T </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v, Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">ptr);</span>
+
+<span style="color: #6272A4">// Gather/Scatter</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #F8F8F2">, </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">S</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;&gt;</span>
+<span style="color: #F8F8F2">T Gather(S </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">ptr, Index</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">idx);</span>
+
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #F8F8F2">, </span><span style="color: #FF79C6">typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">S</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> Scalar</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;&gt;</span>
+<span style="color: #8BE9FD">void</span><span style="color: #F8F8F2"> Scatter(T </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v, S </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">ptr, Index</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">idx);</span>
+
+<span style="color: #6272A4">// Masking/Blending</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">M</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">bool</span><span style="color: #F8F8F2"> MaskFull(M </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mask);</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">M</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">bool</span><span style="color: #F8F8F2"> MaskEmpty(M </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mask);</span>
+
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">void</span><span style="color: #F8F8F2"> MaskedAssign(T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">dst, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> Mask</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mask, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">src);</span>
+<span style="color: #FF79C6">template</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&lt;typename</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> T Blend(</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> Mask</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">T</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">mask, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">src1, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> T </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">src2);</span>
+
+<span style="color: #F8F8F2">} </span><span style="color: #6272A4">// namespace vecCore </span>
+</code></pre></div>
+<p><em><strong>Listing 5.1</strong>: VecCore API.</em></p>
+<p>Listing 5.2 shows how the branching operations described in Figure 5.1 are applied using VecCore.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">// ROOT::Double_v is the new VecCore based</span>
+<span style="color: #6272A4">// double SIMD type integrated in ROOT</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Double_v x_v, res_v, var1_v, var2_v; </span>
+<span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> x, res, var1, var2;</span>
+
+<span style="color: #6272A4">// (.....)</span>
+
+<span style="color: #6272A4">// Case 1: Assigning rvalues if condition is fullfilled</span>
+<span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> res </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> x</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.</span><span style="color: #FF79C6">?</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">1.</span><span style="color: #FF79C6">:</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">2.</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">vecCore</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Blend(res_v, x_v</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.0</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">);</span>
+
+<span style="color: #6272A4">// Case 1: Assigning variables element-wise if condition is met</span>
+<span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> res </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> x</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.</span><span style="color: #FF79C6">?</span><span style="color: #F8F8F2"> var1</span><span style="color: #FF79C6">:</span><span style="color: #F8F8F2"> var2;</span>
+<span style="color: #F8F8F2">vecCore</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Blend(res_v, x_v</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.0</span><span style="color: #F8F8F2">, var1_v, var2_v);</span>
+
+<span style="color: #6272A4">// Case 3: Only updating elements of the SIMD array that pass the condition</span>
+<span style="color: #FF79C6">if</span><span style="color: #F8F8F2">(x</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.</span><span style="color: #F8F8F2">){</span>
+<span style="color: #F8F8F2">   res</span><span style="color: #FF79C6">+=</span><span style="color: #F8F8F2">var1;</span>
+<span style="color: #F8F8F2">}</span>
+<span style="color: #F8F8F2">vecCore</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">MaskedAssign(res_v, x_v</span><span style="color: #FF79C6">&lt;</span><span style="color: #FFB86C">0.</span><span style="color: #F8F8F2">, res_v </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> var1_v);</span>
+</code></pre></div>
+<p><em><strong>Listing 5.2</strong>: Comparison of the expression of branching conditions between the scalar case and using VecCore.</em></p>
+<p>In addition to the described API, VecCore oﬀers vectorized mathematical functions and some other interesting utilities such as the <code>Load</code> method, which deals with problems caused by reading from unaligned memory, and safe type castings.</p>
+<p><span id="tf1"></span>ROOT defines new VecCore-based SIMD array data types, e.g. <code>ROOT::Float_v</code> or <code>ROOT::Double_v</code>, representing double and single precision SIMD vectors respectively.</p>
+<p><strong>Performance analysis: generating Julia sets.</strong> We next leverage the generation of Julia sets<sup id="fnref:5"><a href="#fn:5" class="footnote-ref" role="doc-noteref">5</a></sup> as a benchmark to evaluate the performance of vectorization with VecCore.</p>
+<p>Julia sets are most popularly represented as complex quadratic polynomials. The Julia set we benchmark is composed of a fixed subset of image points (x, y) on the complex plane z = x + iy, z &isin; &#8450;, for which we compute the series z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + c, c &isin; &#8450;, -2 &le; z<sub>n</sub> &le; 2, where z<sub>0</sub> = x<sub>j</sub> + iy<sub>j</sub>, and x and y are the coordinates of the point j in the complex plane, and the series is evaluated until divergence (values of z<sub>n</sub> out of bounds) or until z<sub>N</sub>, with N being the maximum number of evaluations set by the user to approximate the progression in the bounded case. We obtain a diﬀerent Julia set approximation for each value of the complex constant c.</p>
+<p>The code for generating a fractal image related to the Julia set with any library other than the standard one iterates, for each pixel, the series above until either it diverges or the maximum number of iterations is reached, storing the resulting step count as the pixel value. Listing 5.3 implements a version of the same code adapted for vectorization using VecCore: instead of computing one pixel at a time, we advance an entire SIMD lane of pixels together, using <code>MaskedAssign</code> to freeze the lanes that have already diverged while the remaining ones keep iterating, and <code>MaskEmpty</code> to detect when every lane in the array has terminated. The value of each pixel in the final image is given by a function of the number of steps taken by the progression on each point until termination, for both the set of points within our approximation of the Julia set and the ones for which the series diverged. We refer to these images as a representation of the Julia set, despite including values outside of the set.</p>
+LISTING3
+<p><em><strong>Listing 5.3</strong>: VecCore based implementation of a Julia set generator. This implementation can be executed on any backend supported by VecCore, from the Scalar backend to Vc or UME::SIMD, and it can target any set of SIMD instructions supported by the architecture it executes on.</em></p>
+<p><strong>Benchmarking the evolution of Julia sets.</strong> From the recurrence above we infer that the time needed to generate diﬀerent Julia sets from the same initial subset of points in the complex plane varies significantly with the value c. For this reason, we consider it interesting to evaluate the performance of vectorization with the evolution of the fractal image, that is, the Julia sets generated with diﬀerent values for the complex constant c.</p>
+<p>To do this, we represent c as a complex number in polar form, i.e. c = b&middot;e<sup>i&alpha;</sup>, where b &isin; &#8477; and &alpha; is the angle parameter in the interval [0, 2&pi;). If we fix the value of b, e.g. to b = 0.7885, and approximate the series by restricting the maximum number of evaluations to N = 100, we observe the evolution of the fractals given by the Julia sets defined by the progression z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + 0.7885e<sup>i&alpha;</sup>, -2 &le; z &le; 2, &alpha; &isin; [0, 2&pi;), n &le; 100.</p>
+<p>The following measurements have been taken in an Intel Core i7-4790 desktop server with 4 physical cores (8 logical threads) at 3.6 GHz and 8 GB of RAM, executed with AVX2 as SIMD instruction set and compiled with gcc 7.</p>
+<p>The execution time measured for a continuously increasing &alpha; exhibits high volatility based on the value of &alpha;, independently of the backend of choice. These measurements also reveal that Vc outperforms UME::SIMD in any benchmarked type and that, while vectorization always provides better times, the scalar backend displays minimal performance penalty overall and even occasionally improves the time obtained when evaluating the base types, an eﬀect we attribute to auto-vectorization performed by the compiler on the base-type code.</p>
+<p>The speed ups stay below the ideal ones and, although they improve occasionally in several spikes that match those of the execution time, they are greatly influenced by the backend of choice. If we compute the speed up of these results with respect to the time obtained for the base types without allowing auto-vectorization, we observe that Vc considerably outperforms UME::SIMD as a backend in both cases (Table 5.2). In addition, VecCore's scalar backend now improves the time obtained with the base types, although it does not match the autovectorization oﬀered by the compiler, except on the spikes. Curiously, it is in the same spikes that we obtain the best vectorization for any of the other backends. This seems to indicate that the vectorization requires a greater amount of work to yield noticeable benefits. If we plot the fractal picture, i.e. the Julia set generated, for the value of the angle &alpha; corresponding to each of the local maximums observed, we observe that these images have a sizeable black area. We call this the convergence area, that is, an area composed of points that did not diverge before reaching the Nth step in the series progression (our approximation to the theoretical notion of a Julia set).</p>
+<table>
+<thead>
+<tr><th></th><th colspan="2">float</th><th colspan="2">double</th></tr>
+</thead>
+<tbody>
+<tr><td>Backend</td><td>UME::SIMD</td><td>Vc</td><td>UME::SIMD</td><td>Vc</td></tr>
+<tr><td>Reference</td><td>8</td><td>8</td><td>4</td><td>4</td></tr>
+<tr><td>Max. speed up</td><td>6</td><td>6.17</td><td>1.75</td><td>2.84</td></tr>
+<tr><td>Min. speed up</td><td>2.75</td><td>3.52</td><td>1.27</td><td>2.02</td></tr>
+<tr><td>Avg. speed up</td><td>3.45</td><td>4.36</td><td>1.51</td><td>2.34</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 5.2</strong>: Comparison of the maximum, minimum and average speed ups obtained with respect to the ideal ones (Reference) for the Vc and UME::SIMD backends of VecCore evaluating in the AVX2 instruction set.</em></p>
+<p>When vectorizing the generation of Julia sets, we attribute the improved speed up to the existence of large uniform areas. In contrast with the N evaluations reached by the points within the convergence area, the points that diverge (i.e. reach out of bounds values, in this case outside the interval [-2, 2]) require a heterogeneous number of evaluations of the series progression. In terms of computation, this is related to the conditional branching problem introduced in Section <a href="#51-vectorization">5.1</a>: let S be an SIMD array fitting 4 integers, and let x&#8407; be an array of integer data of the same size as the SIMD array, in which processing each component takes 10, 20, 80 and 35 evaluations respectively. In the scalar case the total number of evaluations required is the sum of the evaluations required for each element, 10+20+80+35 = 145. In the vectorized case the SIMD array is evaluated as a whole as many times as the element that requires the most evaluations, that is, 80. In this example we obtain a speed up of 145/80 = 1.81, when the ideal one (i.e. each element requires the same number of evaluations) would be 4. A homogeneous area in the image indicates that the pixels within its borders take a similar number of evaluations and, as a consequence, avoid the problem of conditional branching. Heterogeneous areas may cause the fluctuations in execution time and speed up we observe. However, after analyzing the homogeneity of the images and computing the potential speed up loss caused by branching for several values of &alpha;, it becomes clear that branching only aﬀects the speed up in a minimal way in this case, almost negligible with respect to the results obtained.</p>
+<p>If we benchmark the code line by line, and analyze the assembly instructions, we can deduce that the vectorization libraries themselves are responsible for the suboptimal speed ups. The implementation of these libraries, and especially the SIMD intrinsics chosen to implement the abstracted operations, might impact performance considerably. For example, in the implementation of the initialization of the mask in Vc, and probably as a compromise to oﬀer a user-friendly interface, the code loops through the SIMD array, assigning the initialization value element by element. These instructions are scalar instead of packed. This occurs in UME::SIMD as well. Due to the particularities of its design, UME::SIMD emulates scalar instructions instead of using vector operations more frequently than Vc. Furthermore, the out-of-order execution of the processor might be able to process and parallelize scalar operations more eﬃciently at instruction level.</p>
+<p>In addition, the architecture we execute on may attenuate the diﬀerences in speed up even more, especially with respect to instruction-level parallelism. For example, Intel's Skylake architecture oﬀers a throughput of 3 instructions per CPU cycle for the AVX2 8-bit integer addition instruction, improving the rate obtained on the Broadwell and Haswell architectures, which both sit at 2 instructions per cycle for the same operation.</p>
+<p><strong>Compiler comparison.</strong> A conspicuous result from the previous benchmarks is the diﬀerence in speed up between Vc and UME::SIMD. One of the most plausible reasons for this considerable gap in performance is that UME::SIMD is a library that has been optimized for its use in combination with icc instead of gcc. That is, the implementation of the vectorization directives in each library used as a backend for VecCore may be optimized for a concrete compiler.</p>
+<p>Therefore, it is interesting to measure the diﬀerence in performance of these libraries when relying on diﬀerent compilers, in order to make an informed decision about the combination of VecCore backend and compiler that provides the best performance. We compare the speed up for both float and double types in AVX2 SIMD arrays for three main compilers (gcc, icc and clang), measured on the same Intel Core i7-4790 desktop server, without task-level parallelism being exploited.</p>
+<p>We observe that Vc generates more eﬃcient SIMD instructions when compiling with gcc and clang, while UME::SIMD displays better results with icc than gcc. In particular, Vc shows a considerably higher speed up in the double precision case for both gcc and clang in comparison with any other combination.</p>
+<p>If the best option were to be selected in terms of speed up, Vc and gcc would be the combination of choice, closely followed by Vc plus clang. However, this deduction is based on a wrong premise, as the speed ups are computed as a factor of the sequential execution compiled by the same compiler. Therefore, we cannot base our decision on the speed up metric alone.</p>
+<p>Instead, we must consider the absolute execution time. Comparing the diﬀerent execution times observed with our benchmark code for an increasing &alpha; in the interval [0, 2&pi;), we conclude that the best absolute choice is to compile Vc with gcc, while the worst one is to compile UME::SIMD code with clang. In general, we note that Vc reduces the time obtained by UME::SIMD independently of the compiler.</p>
+<p><strong>Eﬃciency of Julia set generation for diﬀerent sets of instructions.</strong> Finally, we measure the eﬃciency of our implementation when executing VecCore's vectorized backends on diﬀerent sets of SIMD instructions. For a more complete picture, we execute our benchmark on a machine that supports SSE2, AVX2 and AVX512 as sets of instructions, an Intel Xeon Phi 7210 server composed of two sockets with 64 cores each at 1.3 GHz (supporting hyperthreading) and 110 GB of RAM in total. The benchmark is executed in the quadrant execution mode of the Xeon Phi, and it has been compiled with icc 17 (the only compiler yet supporting the AVX512 set of instructions).</p>
+<p>In general, the results exhibit less fluctuation and volatility on this platform (Xeon Phi) than on the previous servers.</p>
+<p>One of the first things we notice is that Vc does not have a proper AVX512 implementation and falls back to AVX2. Therefore, the times and speed up obtained by Vc for both the AVX2 and the AVX512 sets of instructions are similar. While executing with AVX2, Vc improves the results of UME::SIMD for the double case, but underperforms with float. The inverse occurs when executing with SSE2, with Vc significantly improving the results attained by UME::SIMD, which shows a slight slowdown with respect to the base type execution in this case. Finally, UME::SIMD displays high scalability between the three instruction sets, and the support of the AVX512 SIMD instruction set renders it the most convenient backend when executing on platforms that support it.</p>
+<p>As a final remark, the speed up obtained with the combination of UME::SIMD and AVX512 is the best we have recorded for any benchmark, but looking at the execution time, we can assert that this platform's processor frequency is too slow to make it the preferred option.</p>
+<h2 id="53-generating-julia-fractals-with-tf1">5.3 Generating Julia fractals with TF1<a class="anchor" href="#53-generating-julia-fractals-with-tf1">#</a></h2>
+<p>We benchmark again the generation of Julia sets, this time with a constant c = 0.285 + 0.01i, using the new ROOT SIMD types, concretely <code>ROOT::Double_v</code>, and the interfaces we adapted for vectorization. For this, we use TF1, the ROOT class representing a one dimensional function defined between lower and upper limits. TF1 is a wrapper over a user-specified function that extends its functionality to adapt it to ROOT's interfaces and conforms a fundamental class in ROOT. It is also the base class for the multidimensional function classes (TF2, TF3), and it is leveraged with frequency, from fitting (as it can be parameterized) to graphics display.</p>
+<p>Unlike other classes, such as those that define the fitting interfaces, TF1 is exposed to the user for direct manipulation. For this reason, and to maintain backwards compatibility, instead of templating the class, we template the necessary class members to process the new vectorized types. This makes existing code available for vectorization by adapting the user function to operate on <code>ROOT::Double_v</code>.</p>
+<p>In addition, we developed TF1 further with new features such as new constructors for <code>std::function</code> types and the possibility to evaluate over scalar data types (<code>double</code>) when the function that TF1 has been built on is vectorizable. In this case, we fill the entire SIMD array with the scalar value, operate with it, and return only one of the (identical) values of the resulting SIMD array.</p>
+<p>Our benchmark also serves to measure the adaption of a user function with more than two parameters to the TF1 interfaces. TF1 is a parametric function with strict interfaces, allowing as its only parameters a pointer to the data and a pointer to the parameters needed for the evaluation of the user function. This limitation is frequently overcome by wrapping the user function in a C++ functor, packing the parameters in an array of double when calling the TF1, and unpacking them after forwarding the call to the user provided functor. This operation adds a slight overhead in the packing/unpacking process and to the call forwarding.</p>
+<p>The benchmark was run on an Intel Core i7-4790 desktop server with 4 physical cores (8 logical threads) at 3.6 GHz and 8 GB of RAM, executed with AVX2 as set of SIMD instructions and compiled with gcc 6.2. The functor adaption and TF1 wrapping adds a small overhead in all cases, and VecCore's scalar backend essentially matches the performance attained by the original code, including performing several masking operations as a consequence of conditional branching (Section <a href="#51-vectorization">5.1</a>). Finally, we observe a fair speed up when vectorizing, considering the complexity of the problem at hand: the scalar evaluation of the functor-wrapped function takes around 136 ns per call, VecCore's scalar backend matches it at around 131 ns, and switching to the vectorized <code>ROOT::Double_v</code> backend brings the cost down to around 52 ns per call &mdash; evaluating several points of the fractal in the time it previously took to evaluate one.</p>
+<p>We further benchmark the performance of TF1 in the <a href="/blog/cern/executor_applications/#73-vectorization-of-mathematical-formulas-compiled-at-runtime">Performance studies</a> article of this series, where we compare the single call performance of TF1 built with a free function and TFormula, the formula class in ROOT, with their vectorized counterparts.</p>
+<h2 id="54-conclusions">5.4 Conclusions<a class="anchor" href="#54-conclusions">#</a></h2>
+<p>We introduced data-level parallelism in ROOT by capitalizing on the advantages oﬀered by the VecCore library and its backends in terms of programming model and performance. By oﬀering an extra abstraction layer on top of its exchangeable backends, VecCore provides eﬃcient vectorization with an improved yet simpler programming model that, among other benefits, allows for better portability with the development of architecture-oblivious code.</p>
+<p>We benchmarked VecCore's performance extensively with a complex example, the computation of diﬀerent Julia sets. We evaluated the generation of Julia sets on two diﬀerent floating point types, float and double; two diﬀerent computers, a desktop server and a Xeon Phi; two diﬀerent VecCore backends, Vc and UME::SIMD; three diﬀerent compilers, icc 17, gcc 7.2 and clang 5; and three diﬀerent instruction sets, SSE2 (desktop server and Xeon Phi), AVX2 (desktop server and Xeon Phi) and AVX512 (Xeon Phi).</p>
+<p>In all cases, VecCore exhibits suboptimal speed ups due to the nature of the benchmark, with gcc performing better than icc or clang. We demonstrate that Vc outperforms UME::SIMD in almost all scenarios, but the latter supports AVX512, which is not the case for the former. Finally, while the highest speed ups are obtained with AVX512 on the Xeon Phi server, the processor frequency on this machine is not fast enough to consider this combination the best option.</p>
+<p>In addition, we introduced two new SIMD types based on VecCore types in ROOT, <code>ROOT::Float_v</code> and <code>ROOT::Double_v</code>, for the implementation of SIMD operations in ROOT's classes. Moreover, we provided an example of the integration of VecCore within ROOT by introducing VecCore-based SIMD evaluation in TF1, the bounded function class, which is widely used in ROOT for the performance of mathematical operations. We compared the execution of a vectorized function as a free function with the same function adapted for its execution as a TF1. We demonstrate an eﬃcient implementation of SIMD vectorization in TF1, which even with the required scaﬀolding, produces almost negligible overhead over the free function evaluation.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p>Kretz, M., &amp; Lindenstruth, V. (2012). Vc: A C++ library for explicit vectorization. <em>Software: Practice and Experience, 42</em>(11), 1409-1430. <a href="https://onlinelibrary.wiley.com/doi/10.1002/spe.1149">link</a> <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:2" role="doc-endnote">
+<p>Karpinski, P., &amp; McDonald, J. (2017). A high-performance portable abstract interface for explicit SIMD vectorization. In <em>PMAM@PPoPP</em>, 21-28. <a href="https://dl.acm.org/doi/10.1145/3026937.3026939">link</a> <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:3" role="doc-endnote">
+<p>Amadio, G., Canal, P., &amp; Wenzel, S. (2017). root-project/VecCore: Release v0.4.2. <a href="https://github.com/root-project/veccore/">link</a> <a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:4" role="doc-endnote">
+<p>Nickolls, J., Buck, I., Garland, M., &amp; Skadron, K. (2008). Scalable parallel programming with CUDA. <em>Queue, 6</em>(2), 40-53. <a href="https://doi.org/10.1145/1365490.1365500">link</a> <a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:5" role="doc-endnote">
+<p>Julia set <a href="https://en.wikipedia.org/wiki/Julia_set">https://en.wikipedia.org/wiki/Julia_set</a> <a href="#fnref:5" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+              
+          </article>
+          
+
+<ul class="tags__list">
+    
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/root/">root</a>
+    </li></ul>
+
+ <div class="pagination">
+  
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/tlp/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">Task-level parallelism</span>
+    </a>
+  
+
+  
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/root_fitting/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Parallelization of the fit</a>
+    </a>
+  
+</div>
+
+          
+          <footer class="post__footer">
+            <div class="social-icons">
+    
+    
+    
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+    
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+      
+      <div class="toc-container">
+          
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#51-vectorization">5.1 Vectorization</a></li>
+        <li><a href="#52-veccore">5.2 VecCore</a></li>
+        <li><a href="#53-generating-julia-fractals-with-tf1">5.3 Generating Julia fractals with TF1</a></li>
+        <li><a href="#54-conclusions">5.4 Conclusions</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+      
+    </div>
+    
+
+  </main>
+
+   
+
+  
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+  
+  
+
+  
+    <script src="/js/table-of-contents.js"></script>
+  
+
+
+</body>
+
+</html>

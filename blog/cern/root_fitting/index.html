@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>Parallelization of the fit | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+  
+  
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+  
+  
+    
+ 
+  
+  
+  
+  
+  
+  
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+  
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+  
+  
+   
+   
+    
+
+<script type="application/ld+json">
+  
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "Parallelization of the fit",
+      "headline" : "Parallelization of the fit",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2019",
+      "datePublished": "2019-09-19 10:05:51 +0200 CEST",
+      "dateModified" : "2019-09-19 10:05:51 +0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/root_fitting\/",
+      "wordCount" : "4993",
+      "keywords" : ["Blog"]
+    }
+  
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+ 
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+    
+    
+      <li>
+        <a  href="/">about</a>
+      </li>
+    
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+    
+  </ul>
+</nav>
+
+
+  <main>
+    
+    
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">Parallelization of the fit</h1>
+            <time datetime="2019-09-19 10:05:51 &#43;0200 CEST" class="post__date">Sep 19 2019</time> 
+          </header>
+          <article class="post__content">
+              
+<section class="warning_block"> <p>This article is part of a series that I'm slowly publishing, and it still has several broken links referencing unpublished articles.</p></section>
+<p>Fitting of data distributions is one of the most demanding and computing-intensive activities when performing data analysis on the results of the LHC.</p>
+<p>In order to take full advantage of new computer architectures, and to maintain or even improve performance with increasing amounts of data to analyze, parallelization and vectorization have been introduced in the ROOT mathematical and statistical libraries.</p>
+<p>The tools for parallelism described in <a href="/blog/cern/tlp/">Task-level parallelism</a> and <a href="/blog/cern/dlp/">Data-level parallelism</a> can be applied together when parallelizing the minimization process for solving fitting problems. As a result of the substantial work done on developing and integrating these parallelization tools in ROOT, vectorization and parallelization have been introduced in ROOT's fitting interfaces, requiring minimal changes in user code. To improve the speed up, ROOT's main fitting methods, introduced in Section <a href="#61-fitting-fundamentals">6.1</a>, have been parallelized both at data-level (Section <a href="#63-vectorization">6.3</a>) and task-level (Section <a href="#64-multiprocessing-and-multithreading">6.4</a>).</p>
+<p>We report on the improvements obtained by adding support for SIMD vectorization and multithreaded parallelization in the function evaluation with a typical example from HEP data analysis. In Section <a href="#65-case-example-a-typical-fit">6.5</a>, we show how the different evaluations of the likelihood and the least square functions used for fitting ROOT histograms and datasets represented by ROOT trees perform for this case.</p>
+<h2 id="61-fitting-fundamentals">6.1 Fitting fundamentals<a class="anchor" href="#61-fitting-fundamentals">#</a></h2>
+<p>Fitting is one of the most recurrent and fundamental operations in HEP, as it provides valuable information about the distribution of the observed data. In this section we introduce the foundations of likelihood fitting, introducing the concepts of likelihood and likelihood function, and focusing on two methods to estimate the parameters that maximize the likelihood function: maximum likelihood and least squares.</p>
+<h3 id="611-the-likelihood-function">The likelihood function<a class="anchor" href="#611-the-likelihood-function">#</a></h3>
+<p>Consider the hypothesis H as a conjecture over the probability P(x|H) of the observed data x. If P(x|H) were to define the probability density function (p.d.f.) for the data as a function of H, we would then call L(H) = P(x|H) the likelihood of H.</p>
+<p>If the hypothesis is characterized by the typically unknown parameters θ, then L(θ) = P(x|θ) is called the likelihood function.</p>
+<p>The likelihood function plays a central role in the fitting process, which ultimately consists of inferring θ from x so that we find the probability mass or density function (in this case L(θ)) that better adjusts to the observed data. For this purpose, we need good estimators of the parameters.</p>
+<p>For instance, we are frequently in need of good estimators for the median, mean and variance parameters of a distribution. In this case, a good choice of estimators is to set the median to the sample median and to estimate the mean μ̂ and the variance σ̂² with the unbiased estimators given by the equations</p>
+<p style="text-align:center"><em>μ̂ = (1/n) Σᵢ xᵢ&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;&nbsp;&nbsp;&nbsp;σ̂² = (1/(n&minus;1)) Σᵢ (xᵢ&minus;μ̂)²</em></p>
+<h3 id="612-maximum-likelihood">Maximum Likelihood<a class="anchor" href="#612-maximum-likelihood">#</a></h3>
+<p>Given a set of parameters θ, we want to obtain the set of estimators θ̂ that maximize the likelihood function. In other words, the maximum likelihood estimate follows</p>
+<p style="text-align:center"><em>θ̂ = max L(θ)</em></p>
+<p>However, it is frequently more convenient to work with the natural logarithm of the likelihood function, ln L, finding the estimators by solving the equation ∂ ln L / ∂θᵢ = 0, for i = 1, &hellip;, N.</p>
+<p>The likelihood function formulation depends on the nature of the data. For example, if the data consists of a fixed number n of independent and identically distributed values following the same p.d.f., the likelihood becomes</p>
+<p style="text-align:center"><em>L(θ) = ∏ᵢ f(xᵢ; θ)</em></p>
+<p>where f(x, θ) is the p.d.f. of observing the data x given the set of parameters θ. If the data does not consist of a fixed number of events, but the probability to observe n events follows a Poisson distribution with mean μ depending on the parameter θ, then we obtain the extended likelihood function formula:</p>
+<p style="text-align:center"><em>L(θ) = (μⁿ/n!) e<sup>&minus;μ</sup> ∏ᵢ f(xᵢ; θ)</em></p>
+<h3 id="613-binned-maximum-likelihood">Binned maximum likelihood<a class="anchor" href="#613-binned-maximum-likelihood">#</a></h3>
+<p>If the data sample contains a large number of values, it is usually convenient to represent it as a histogram, classifying the values in N bins.</p>
+<p>If, again, the n bins created out of n<sub>tot</sub> events are independent and follow a Poisson distribution, the likelihood function takes the form of a product, over all bins, of Poisson probabilities for observing nᵢ events when μᵢ(θ) are expected, each one further weighted by the p.d.f. of the data within that bin, where μᵢ are the mean values of the bins described as functions of θ, and μ<sub>tot</sub> = Σᵢ μᵢ is the mean of the n<sub>tot</sub> original events of the Poisson distribution.</p>
+<p>By using the likelihood ratio λ(θ) = f<sub>P</sub>(n; θ)/f(n; μ̂), we can obtain, in addition, an indicator of the &ldquo;goodness of fit&rdquo;<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>:</p>
+<p style="text-align:center"><em>&minus;2 ln λ(θ) = 2 Σᵢ [ μᵢ(θ) &minus; nᵢ + nᵢ ln(nᵢ/μᵢ) ]</em></p>
+<h3 id="614-least-squares">Least squares<a class="anchor" href="#614-least-squares">#</a></h3>
+<p>Besides the maximum likelihood, there is an alternative way of inferring the parameters by using the method of the least squares<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup>.</p>
+<p>Given a set of N independent measurements at point yᵢ, with mean μ(xᵢ; θ) and variance σᵢ², the least squares estimators Θ̂ for the unknown parameters Θ can be defined by the equation:</p>
+<p style="text-align:center"><em>χ²(θ) = Σᵢ (yᵢ &minus; μ(xᵢ; θ))² / σᵢ²&nbsp;&nbsp;,&nbsp;&nbsp;∀θ ∈ Θ</em></p>
+<p>where the parameters minimizing χ²(θ) maximize the likelihood L. If yᵢ were to be Gaussian distributed, the least squares method would be equivalent to that of the maximum likelihood described above.</p>
+<figure>
+    <img src="/media/root_fitting/FittingDiagram.png"
+         alt="Depiction of the parallelization of the fitting"/> <figcaption>
+            <p><em><strong>Figure 6.1</strong>: Depiction of the parallelization of the fitting. The parallelization at task-level involves chunking, multithreaded mapping (distribution and evaluation) and reduction to a single result. At data-level, we vectorize the model function evaluation.</em></p>
+        </figcaption>
+</figure>
+<h2 id="62-parallelization-of-the-fitting-in-root">6.2 Parallelization of the fitting in ROOT<a class="anchor" href="#62-parallelization-of-the-fitting-in-root">#</a></h2>
+<p>In this section, we study the parallelization of the maximum likelihood, the binned likelihood and the least squares methods described above.</p>
+<p>Figure 6.1 illustrates the parallelization process followed in each one of the algorithms and the way each layer of parallelism is exploited in a multicore computer.</p>
+<p>We start by dividing the data into N chunks and distributing them to N tasks that will run in M threads (Chunking stage). The Map stage of the MapReduce implementation of choice &mdash; TProcessExecutor (see <a href="/blog/cern/tlp/#43-tprocessexecutor">TProcessExecutor</a>) for multiprocessing, TThreadExecutor (see <a href="/blog/cern/tlp/#44-tthreadexecutor">TThreadExecutor</a>) for multithreading &mdash; is responsible for the distribution of the tasks to the threads (Distribution stage).</p>
+<p>Although the clustering of the data can be delegated to the user, we can take advantage of the chunking capabilities of the MapReduce executors as well. However, since in this case the nature of the data and the evaluation functions are opaque to the fitting interfaces, it is difficult to infer the most efficient number of chunks without any input from the user.</p>
+<p>Notwithstanding, we provide a heuristic function to infer an appropriate number of chunks, depending on the size of the datum and within a range given by empirical experimentation (see Section <a href="#64-multiprocessing-and-multithreading">6.4</a>). This number of chunks should be large enough to improve balancing, but within a certain limit to avoid that the overhead of task creation undermines the balancing benefits.</p>
+<p>Every task of the Map stage evaluates the function on C events, where C = nEvents / N is the chunk size (Evaluation stage). If the user provides a vectorized function that takes ROOT's SIMD types as parameters, while still evaluating C events, the number of function evaluations per task is reduced from C to roughly C/S. Here, S is the number of double types fitting into the SIMD array size of the instruction set, as the ROOT fitting interfaces are designed to only evaluate on double. That is to say that the least squares equation becomes a double sum over chunks and over the SIMD arrays within each chunk, where j iterates over the number of chunks, i iterates over the number of SIMD arrays of size S that fit in a chunk, and the SIMD array x<sub>ij</sub> is the i-th SIMD array in the j-th chunk or partition of the data point x.</p>
+<p>Once all the data points have been evaluated, the Reduce stage will be invoked on the returned map vector (Reduction stage). Note that providing a vectorized function will also reduce the size of the returned Map <code>std::vector</code>, which will diminish the cost of the Reduce phase.</p>
+<p>All this is possible thanks to the parallelization of the fitting functions and the &ldquo;templatization&rdquo; of ROOT's fitting interfaces.</p>
+<p>The fitter, the interface between the minimizer and the fitting interfaces, uses the data and the model function to implement the objective function (χ², Max. Likelihood), whose implementation is parallelized at task-level by TThreadExecutor and TProcessExecutor (Section <a href="#64-multiprocessing-and-multithreading">6.4</a>). The fitter also provides the objective function to the minimizer, which can compute internally the gradient using numerical differentiation, or it can be passed by the fitter using the gradient of the model function.</p>
+<p>The fitter requires the model function received to be described by a generic interface that accommodates the function evaluation in ROOT, which can be used for fitting and other numerical algorithms. For their convenience, we require the users to pass the model function to the fitter via the TF1 class. The TF1 instance is then wrapped in the generic interface, which has been extended for vectorization using templates. ROOT also provides a similar interface for gradient evaluation.</p>
+<p>In some cases, we may want to compute externally the numerical derivatives of the model function (e.g. to save computational time). This external derivation is provided by the user by leveraging ROOT's gradient interfaces. The user's derivative function is then propagated to the gradient function of the minimizer of choice via the fitter, and evaluated sequentially or in parallel either at data-level or task-level. The implementations that use these gradient interfaces have also been parallelized and vectorized.</p>
+<p>In the following sections we explore in more detail the challenges confronted, technical details and the implementation decisions during the exploitation of data-level parallelism and task-level parallelism of the fitting in ROOT.</p>
+<h2 id="63-vectorization">6.3 Vectorization<a class="anchor" href="#63-vectorization">#</a></h2>
+<span id="tf1"></span><p>ROOT provides two data classes for the representation of the fitting data: binned and unbinned. These classes are filled with the ROOT user data object, such as histograms or trees, and provide the necessary interfaces for the fitter to manipulate the data.</p>
+<p>Both the binned and unbinned data classes have been adapted to exploit data-level parallelism. This type of parallelism is implemented in the fitting using VecCore<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup> (see <a href="/blog/cern/dlp/#52-veccore">VecCore</a>), to adapt the fitting interfaces to vectorize the operations in the evaluation of the model function provided by the user.</p>
+<p>For this, we need to modify the way ROOT stores the fitting data in the data structures mentioned above and to provide padding mechanisms for safe lecture and storage of the data in the SIMD types used by the vectorized fitter. Furthermore, we need to template the fitting interfaces and to vectorize the implementation of the objective function to read and operate on SIMD arrays.</p>
+<h3 id="631-from-array-of-structures-to-structure-of-arrays">From Array of Structures to Structure of Arrays<a class="anchor" href="#631-from-array-of-structures-to-structure-of-arrays">#</a></h3>
+<p>Efficient vectorization requires changes in the way ROOT stores data coordinates. Prior to these changes, ROOT stored these data in an object-oriented way; that is, for each data point, all its coordinates were stored consecutively, in arrays of structures (AOS). For example, for a three-dimensional data point, ROOT stored the three coordinates x, y, z contiguously in memory, that is, the data array was stored as (x, y, z)<sub>n</sub> = (x<sub>0</sub>, y<sub>0</sub>, z<sub>0</sub>, &hellip;, x<sub>n</sub>, y<sub>n</sub>, z<sub>n</sub>).</p>
+<p>When loading memory into a SIMD array, we provide the start address of the data and we gather as much contiguous data as the size of the SIMD array indicates. This means that, for correct loading of the coordinates in SIMD arrays, the points' coordinates should be stored in contiguous positions in memory; otherwise the memory loaded into the SIMD array might be incorrect or corrupted. As we want to evaluate several points per coordinate at a time, we need to store the N coordinates in N aligned vectors of data points, or structures of arrays (SOA), that is (x, y, z)<sub>n</sub> = (x<sub>0</sub>, &hellip;, x<sub>n</sub>, y<sub>0</sub>, &hellip;, y<sub>n</sub>, z<sub>0</sub>, &hellip;, z<sub>n</sub>).</p>
+<h3 id="632-padding">Padding<a class="anchor" href="#632-padding">#</a></h3>
+<p>SIMD instruction sets distinguish between two kinds of instructions: packed and scalar.</p>
+<p>A scalar instruction is evaluated on one data element at a time while a packed instruction is evaluated over a full SIMD array. Note that these are the only two options available: if the datum size is not a multiple of the SIMD array size for a certain type, the last (incomplete) array will either be loaded as a set of scalars or require padding to load it as a packed SIMD array.</p>
+<p>We have developed a padding mechanism in order to avoid loading wrong memory addresses into SIMD arrays, i.e. filling the empty positions of the SIMD array with the last data element if the remaining data to load is less than the SIMD vector size. The choice of filling with the last data element is not arbitrary: it is a requisite for the padding to be composed of values that guarantee safe evaluations. This avoids invalid operations (e.g. dividing by zero when padding with the default value for the type) and guarantees that the operation to be performed will be correct. This padding mechanism has been implemented for the coordinates, and for the values and the error in the case of binned data representations.</p>
+<h3 id="633-vectorization-of-root-math-interfaces">Vectorization of ROOT Math interfaces<a class="anchor" href="#633-vectorization-of-root-math-interfaces">#</a></h3>
+<p>ROOT Math interfaces to functions and numerical algorithms have been designed to accept only double precision types. Instead of adding extra overloads to be able to operate with SIMD arrays, we decided to template all fitting and function interfaces, retaining the existing classes as an alias of the new templated ones instantiated on double. The structure of the function interfaces in ROOT prior to their templatization gives a sense of the complexity of this task: a dense web of inheritance between the fitting classes, the minimizer classes, and the gradient and parametric function interfaces, which all needed to carry a SIMD type parameter through every layer without breaking existing user code.</p>
+<p>VecCore is the SIMD library of choice to express vectorization in ROOT, for the reasons explained in <a href="/blog/cern/dlp/#52-veccore">Data-level parallelism</a>. We leverage VecCore types to specify the new type <code>ROOT::Double_v</code> that allows us to work with SIMD types inside ROOT and expose them for user-specified functions.</p>
+<p>Once we obtain the user function, we provide full compatibility with most of the old scripts. This means that, in order to benefit from a vectorized evaluation of the fitting, users will only need to vectorize their function, which in some cases may only require changing the data and return type. The user can also easily create vectorized functions by using TMath methods or TFormula (see <a href="/blog/cern/executor_applications/#tformula">Performance studies</a>) instances.</p>
+<p>In order to achieve this backward compatibility, and as a fundamental class of the fitting process, we also developed templated overloads of the TF1 function type constructors, and implemented the necessary internal mechanisms for evaluation on SIMD types, as discussed in <a href="/blog/cern/dlp/#53-generating-julia-fractals-with-tf1">Generating Julia fractals with TF1</a>.</p>
+<h2 id="64-multiprocessing-and-multithreading">6.4 Multiprocessing and multithreading<a class="anchor" href="#64-multiprocessing-and-multithreading">#</a></h2>
+<p>Our task-level parallelization of the fitting process targets the loop over the data elements in each one of the fitting functions. This approach requires making all the invoked functions within the loop body scope thread-safe, removing all dependencies on previous iterations, and adapting the code to the interface provided by TExecutor.</p>
+<p>As a requirement from TThreadExecutor and TProcessExecutor's interface, the body of the loop evaluation on the datum has been transformed into a callable that evaluates the data on a single point (or SIMD array size points when applying vectorization) and returns the evaluation result. This callable plays the role of the mapping function. The reduction function, another callable, will be adapted to each fitting model, as well as the returned types, from the mapping function. An example of this process is provided in Listing 6.1.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">//Halves accumulation loop</span>
+<span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> sum;</span>
+<span style="color: #FF79C6">for</span><span style="color: #F8F8F2">(</span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> i</span><span style="color: #FF79C6">=</span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">; i</span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2">N; i</span><span style="color: #FF79C6">++</span><span style="color: #F8F8F2">){</span>
+<span style="color: #F8F8F2">    sum</span><span style="color: #FF79C6">+=</span><span style="color: #F8F8F2">i</span><span style="color: #FF79C6">/</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">}</span>
+
+<span style="color: #6272A4">// Same loop parallelized with TThreadExecutor</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> singleEvaluation </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">i) {</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> i</span><span style="color: #FF79C6">/</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">}</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> reduceFunction </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> [](</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">vector</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD">unsigned</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">v) {</span>
+<span style="color: #F8F8F2">    </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">accumulate(v.begin(), v.end(), </span><span style="color: #FFB86C">0U</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">}</span>
+
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TThreadExecutor pool;</span>
+<span style="color: #F8F8F2">pool.MapReduce(singleEvaluation, ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">TSeq</span><span style="color: #FF79C6">&lt;</span><span style="color: #8BE9FD">unsigned</span><span style="color: #FF79C6">&gt;</span><span style="color: #F8F8F2">(N), reduceFunction);</span>
+</code></pre></div>
+<p><em><strong>Listing 6.1</strong>: Porting a traditional loop to TThreadExecutor. We implement in one callable (<code>singleEvaluation</code>) the operation to perform on a single point, and in another one (<code>reduceFunction</code>), the function to reduce the multiple partial results. Finally, we create an instance of TThreadExecutor and call its <code>MapReduce</code> function, which will receive as parameters both callables and, in this case, a sequence of unsigned integers.</em></p>
+<p>For performance, we also propose a heuristic chunking function (Listing 6.2) based on empiric experience and the size of the data that, additionally, limits the potential number of tasks within a fixed interval. The objective is to generate a number of chunks which facilitates attaining work balancing to the TBB scheduler, but which is not so small as to be influenced by the TBB tasks creation overhead. We could improve this function by timing both the evaluation of a single data element and the overhead of creating a task in TBB. This proposal would make sense with data of large size, as the time to evaluate a single additional data point is negligible.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">setAutomaticChunking</span><span style="color: #F8F8F2">(</span><span style="color: #8BE9FD">unsigned</span><span style="color: #F8F8F2"> nEvents){</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> ncpu  </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> std</span><span style="color: #FF79C6">::thread::</span><span style="color: #F8F8F2">hardware_concurrency();</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">if</span><span style="color: #F8F8F2"> (nEvents</span><span style="color: #FF79C6">/</span><span style="color: #F8F8F2">ncpu </span><span style="color: #FF79C6">&lt;</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">1000</span><span style="color: #F8F8F2">) </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> ncpu;</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> nEvents</span><span style="color: #FF79C6">/</span><span style="color: #FFB86C">1000</span><span style="color: #F8F8F2">;</span>
+<span style="color: #F8F8F2">      </span><span style="color: #6272A4">//return ((nEvents/ncpu + 1) % 1000) *40 ; //arbitrary formula</span>
+<span style="color: #F8F8F2">}</span>
+</code></pre></div>
+<p><em><strong>Listing 6.2</strong>: Heuristic function to set an appropriate number of tasks, dependent on the size of the datum (<code>nEvents</code>) and limiting the maximum number of tasks to process.</em></p>
+<p>We also defined the new type <code>ROOT::Fit::ExecutionPolicy</code>, representing the different execution policies, with the options described in Listing 6.3.</p>
+<p>In order to specify the execution policy when calling the fit from a histogram, we extended its interfaces with the options <code>"SERIAL"</code>, <code>"MULTITHREAD"</code> &mdash; not necessary if ImplicitMT is enabled &mdash; and <code>"MULTIPROCESS"</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #FF79C6">namespace</span><span style="color: #F8F8F2"> ROOT{</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">namespace</span><span style="color: #F8F8F2"> Fit{</span>
+<span style="color: #F8F8F2">      </span><span style="color: #FF79C6">enum</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">class</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">ExecutionPolicy</span><span style="color: #F8F8F2"> { </span>
+<span style="color: #F8F8F2">         kSerial,</span>
+<span style="color: #F8F8F2">         kMultithread,</span>
+<span style="color: #F8F8F2">         kMultiprocess</span>
+<span style="color: #F8F8F2">      };</span>
+<span style="color: #F8F8F2">   }</span>
+<span style="color: #F8F8F2">}</span>
+</code></pre></div>
+<p><em><strong>Listing 6.3</strong>: Execution policies available for fitting, representing the serial case, the multithreaded case and the multiprocessed case.</em></p>
+<span id="implicit-explicit-fit"></span><p>As with the rest of ROOT's parallel tools, both implicit and explicit multithreading are offered for the fit: setting the execution policy explicitly gives users and framework developers fine control when it is needed, while leaving it on <code>"SERIAL"</code> and enabling implicit multithreading globally lets the same code benefit from parallelism transparently, for user convenience, flexibility and interface coherency.</p>
+<h2 id="65-case-example-a-typical-fit">6.5 Case example: A typical fit<a class="anchor" href="#65-case-example-a-typical-fit">#</a></h2>
+<p>As an example of how the changes introduced in ROOT can contribute to accelerate the fitting, we choose a fit of the diphoton invariant mass distribution resulting from a Higgs boson (Figure 6.3). Listings 6.4 and 6.5 offer a comparison of the scalar code for this benchmark fit against the code needed for a fully parallelized (multithreading plus vectorization) implementation of the same fit.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">//Example Fit: Implementation of the scalar function</span>
+<span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #50FA7B">func</span><span style="color: #F8F8F2">(</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">params)</span>
+<span style="color: #F8F8F2">{</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> params[</span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> exp(</span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2">(</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">-130.</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">-130.</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">/</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">) </span><span style="color: #FF79C6">+</span>
+<span style="color: #F8F8F2">          params[</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> exp(</span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2">(params[</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2"> params[</span><span style="color: #FFB86C">3</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span>
+<span style="color: #F8F8F2">          ((</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> ((</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">))));</span>
+<span style="color: #F8F8F2">}</span>
+
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> f </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> TF1(</span><span style="color: #BD93F9">"fScalar"</span><span style="color: #F8F8F2">, func, </span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">200</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">4</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">f.SetParameters(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1000</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">7.5</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1.5</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">TH1D h1f(</span><span style="color: #BD93F9">"h1f"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"Test random numbers"</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">12800</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">200</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">h1f.FillRandom(</span><span style="color: #BD93F9">"fScalar"</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1000000</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">h1f.Fit(</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">f);</span>
+</code></pre></div>
+<p><em><strong>Listing 6.4</strong>: Traditional scalar implementation.</em></p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-cpp" data-lang="cpp"><span style="color: #6272A4">//Example Fit: Implementation of the vectorized function</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Double_v </span><span style="color: #50FA7B">func</span><span style="color: #F8F8F2">(</span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">Double_v </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data, </span><span style="color: #FF79C6">const</span><span style="color: #F8F8F2"> </span><span style="color: #8BE9FD">double</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">params)</span>
+<span style="color: #F8F8F2">{</span>
+<span style="color: #F8F8F2">   </span><span style="color: #FF79C6">return</span><span style="color: #F8F8F2"> params[</span><span style="color: #FFB86C">0</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> exp(</span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2">(</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">-130.</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">-130.</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">/</span><span style="color: #F8F8F2"> </span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">) </span><span style="color: #FF79C6">+</span>
+<span style="color: #F8F8F2">          params[</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> exp(</span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2">(params[</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">-</span><span style="color: #F8F8F2"> params[</span><span style="color: #FFB86C">3</span><span style="color: #F8F8F2">] </span><span style="color: #FF79C6">*</span>
+<span style="color: #F8F8F2">          ((</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">)) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> ((</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">data) </span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2"> (</span><span style="color: #FFB86C">0.01</span><span style="color: #F8F8F2">))));</span>
+<span style="color: #F8F8F2">}</span>
+
+<span style="color: #6272A4">// Enable implicit parallelization</span>
+<span style="color: #F8F8F2">ROOT</span><span style="color: #FF79C6">::</span><span style="color: #F8F8F2">EnableImplicitMT();</span>
+
+<span style="color: #6272A4">//This code is totally backwards compatible</span>
+<span style="color: #FF79C6">auto</span><span style="color: #F8F8F2"> f </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> TF1(</span><span style="color: #BD93F9">"fvCore"</span><span style="color: #F8F8F2">, func, </span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">200</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">4</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">f.SetParameters(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1000</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">7.5</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1.5</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">TH1D h1f(</span><span style="color: #BD93F9">"h1f"</span><span style="color: #F8F8F2">, </span><span style="color: #BD93F9">"Test random numbers"</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">12800</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">100</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">200</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">h1f.FillRandom(</span><span style="color: #BD93F9">"fvCore"</span><span style="color: #F8F8F2">, </span><span style="color: #FFB86C">1000000</span><span style="color: #F8F8F2">);</span>
+<span style="color: #F8F8F2">h1f.Fit(</span><span style="color: #FF79C6">&amp;</span><span style="color: #F8F8F2">f);</span>
+</code></pre></div>
+<p><em><strong>Listing 6.5</strong>: Vectorized plus parallelized implementation.</em></p>
+<p>In Listing 6.5 we provide the parallelization and vectorization while maintaining the previous programming model. This is an important achievement, as users can now benefit from multiple levels of parallelization without modifying their old scripts. Starting from line 9 in Listing 6.4, and line 13 in Listing 6.5, the code related to the fitting operations is exactly the same. The only changes required for fitting the data in the vectorized and parallelized case &mdash; Listing 6.5 &mdash; are additions on top of the current workflow.</p>
+<p>First, in order to profit from the implicit task parallelization, the user only needs to call <code>EnableImplicitMT</code> (line 10 of Listing 6.5). This will activate all the mechanisms in ROOT that provide thread safety and parallelize all the operations that allow implicit multithreading in ROOT, such as the fitting. For vectorization, the user needs to provide a vectorized function, which in this case only implies changing the data parameter type and the return type &mdash; to the new <code>ROOT::Double_v</code> type, representing a SIMD array of double &mdash; as shown in line 2 of Listing 6.5.</p>
+<p>We perform three different types of fits, χ² and Poisson likelihood in the binned case and Maximum Likelihood in the unbinned case, to the invariant mass distribution, studying the speed up in each one of these cases.</p>
+<p>In all experiments, the final sum of the partial results (the Reduction stage in Figure 6.1) is computed sequentially and in the same order for the sake of numerical reproducibility. We measured the fitting times normalized to the number of objective function calls made by the fitter, as the nature of the minimization problems makes the number of calls fluctuate between examples, due to numerical precision, and influence the measured times.</p>
+<h3 id="651-individual-evaluations-of-the-objective-function">Individual evaluations of the objective function<a class="anchor" href="#651-individual-evaluations-of-the-objective-function">#</a></h3>
+<p>We first measure the time taken by a single evaluation of each objective function, compiled with gcc 6.2 on a 4-core Broadwell desktop server with 8 GB of RAM, over 120001 bins in the binned case and 120001 points in the unbinned case. We observe close to ideal results both when exploiting task-level parallelism (Parallelized) and data-level parallelism (Vectorized). The best results are obtained with the combination of the two levels of parallelism, with a remarkable speed up even in the χ² evaluation, though the speed up there is lower than for the other two models.</p>
+<table>
+<thead><tr><th>Objective function / Model</th><th>Time (&micro;s)</th><th>Speed up</th></tr></thead>
+<tbody>
+<tr><td>χ² / Sequential</td><td>752.14</td><td>1</td></tr>
+<tr><td>χ² / Vectorized</td><td>232.60</td><td>3.23</td></tr>
+<tr><td>χ² / Parallelized</td><td>214.82</td><td>3.50</td></tr>
+<tr><td>χ² / Vectorized + Parallelized</td><td>80.34</td><td>9.36</td></tr>
+<tr><td>Poisson Likelihood / Sequential</td><td>1283.20</td><td>1</td></tr>
+<tr><td>Poisson Likelihood / Vectorized</td><td>240.83</td><td>5.33</td></tr>
+<tr><td>Poisson Likelihood / Parallelized</td><td>409.62</td><td>3.13</td></tr>
+<tr><td>Poisson Likelihood / Vectorized + Parallelized</td><td>89.58</td><td>14.33</td></tr>
+<tr><td>Unbinned Likelihood / Sequential</td><td>1188.25</td><td>1</td></tr>
+<tr><td>Unbinned Likelihood / Vectorized</td><td>361.99</td><td>3.28</td></tr>
+<tr><td>Unbinned Likelihood / Parallelized</td><td>367.04</td><td>3.24</td></tr>
+<tr><td>Unbinned Likelihood / Vectorized + Parallelized</td><td>89.85</td><td>13.22</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 6.1</strong>: Measured times and speed up for individual calls of the objective functions (4-core Broadwell, 8 GB RAM, AVX2). Measured by the microbenchmarking library Google Benchmark<sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup>, averaging thousands of calls. Evaluated over 120001 bins in the binned case and 120001 points in the unbinned case.</em></p>
+<figure>
+    <img src="/media/root_fitting/PoissonLikelihood.png"
+         alt="Combined speedup of multithreading and vectorization for the Poisson likelihood"/> <figcaption>
+            <p><em>Combined speed up from switching multithreading (MT) and AVX2 vectorization on and off independently, for the Poisson likelihood objective function. Each level of parallelism contributes on its own, and the two compound when applied together.</em></p>
+        </figcaption>
+</figure>
+<p>Notice the super-linear speed up when vectorizing the Poisson likelihood. This is due to improvements (e.g. fused multiplication and addition) in some vectorized operations such as the computation of the logarithm, which in this case is called several times per data point evaluation.</p>
+<h3 id="652-a-complete-fit">A complete fit<a class="anchor" href="#652-a-complete-fit">#</a></h3>
+<p>For a more relevant use case, we benchmark a complete fit. A fit is a minimization process that consists in several calls to the objective function by a minimizer &mdash; external in ROOT's case &mdash; that will make educated guesses on the estimators until it reaches an optimal solution.</p>
+<p>The interactions between the fitting model functions and the minimizer are handled through the fitter, the ROOT class that manages the fitting process. Because the calls to the fitter interface can add overhead in addition to the evaluation of the function, benchmarking a complete fit is important.</p>
+<figure>
+    <img src="/media/root_fitting/HiggsFitSpeedup.png"
+         alt="Speed up for parallelizing and vectorizing a complete fit"/> <figcaption>
+            <p><em><strong>Figure 6.5</strong>: Performance of the fit (4-core Broadwell, 8 GB RAM) for the three objective functions, comparing the sequential, parallel, SSE2, SSE2 parallel, AVX2 and AVX2 parallel cases. Evaluated over 120k bins in the binned fits and 120k points in the unbinned fit.</em></p>
+        </figcaption>
+</figure>
+<p>Figure 6.5 and Table 6.2 report the speed up attained by the parallel fitting, compiled with gcc 6.2 on a desktop server equipped with a 4-core Haswell processor and 8 GB of RAM, and distinct sets of vectorization instructions and evaluation functions.</p>
+<table>
+<thead><tr><th>Objective function / Model</th><th>Time (s)</th><th>Speed up</th></tr></thead>
+<tbody>
+<tr><td>χ² / Sequential</td><td>12.11</td><td>1</td></tr>
+<tr><td>χ² / Parallel</td><td>3.20</td><td>4.19</td></tr>
+<tr><td>χ² / SSE</td><td>8.54</td><td>1.29</td></tr>
+<tr><td>χ² / SSE2 parallel</td><td>4.74</td><td>5.18</td></tr>
+<tr><td>χ² / AVX2</td><td>4.18</td><td>3.41</td></tr>
+<tr><td>χ² / AVX2 parallel</td><td>1.60</td><td>11.23</td></tr>
+<tr><td>Poisson Likelihood / Sequential</td><td>16.05</td><td>1</td></tr>
+<tr><td>Poisson Likelihood / Parallel</td><td>4.24</td><td>3.74</td></tr>
+<tr><td>Poisson Likelihood / SSE</td><td>15.25</td><td>1.3</td></tr>
+<tr><td>Poisson Likelihood / SSE2 parallel</td><td>2.33</td><td>6.95</td></tr>
+<tr><td>Poisson Likelihood / AVX2</td><td>6.57</td><td>3.11</td></tr>
+<tr><td>Poisson Likelihood / AVX2 parallel</td><td>1.40</td><td>15.18</td></tr>
+<tr><td>Unbinned Likelihood / Sequential</td><td>3.09</td><td>1</td></tr>
+<tr><td>Unbinned Likelihood / Parallel</td><td>0.82</td><td>4.48</td></tr>
+<tr><td>Unbinned Likelihood / SSE</td><td>1.69</td><td>1.82</td></tr>
+<tr><td>Unbinned Likelihood / SSE2 parallel</td><td>0.37</td><td>6.90</td></tr>
+<tr><td>Unbinned Likelihood / AVX2</td><td>0.86</td><td>3.59</td></tr>
+<tr><td>Unbinned Likelihood / AVX2 parallel</td><td>0.23</td><td>12.86</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 6.2</strong>: Times and speed up of the fit (4-core Broadwell, 8 GB RAM) for different pairs of objective function and execution policy. Evaluated over 120k bins in the binned fits and 120k points in the unbinned fit. Complements Figure 6.5.</em></p>
+<figure>
+    <img src="/media/root_fitting/SpeedupMT.png"
+         alt="Scaling of the least squares fit with an increasing number of cores"/> <figcaption>
+            <p><em><strong>Figure 6.6</strong>: Scaling of the least squares fit with an increasing number of cores (14-core Xeon, AVX2, 64 GB RAM).</em></p>
+        </figcaption>
+</figure>
+<p>In Figure 6.6 and Table 6.3, we show the scaling of multithreaded operations on a 14-core Xeon processor with AVX2 and 64 GB of RAM. While it scales in the multithreaded scalar case, suboptimal vectorization limits the total speed up.</p>
+<table>
+<thead><tr><th>Cores</th><th>2</th><th>4</th><th>6</th><th>8</th><th>10</th><th>12</th><th>14</th></tr></thead>
+<tbody>
+<tr><td>Parallel</td><td>1.78</td><td>3.43</td><td>5.18</td><td>6.59</td><td>8.21</td><td>9.54</td><td>10.9</td></tr>
+<tr><td>Ideal Parallel</td><td>2</td><td>4</td><td>6</td><td>8</td><td>10</td><td>12</td><td>14</td></tr>
+<tr><td>Parallel + vectorized</td><td>4.80</td><td>8.99</td><td>12.66</td><td>16.08</td><td>19.24</td><td>22.51</td><td>24.57</td></tr>
+<tr><td>Ideal Parallel + vectorized</td><td>8</td><td>16</td><td>24</td><td>32</td><td>40</td><td>48</td><td>56</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 6.3</strong>: Execution time recorded in seconds for a complete fit (Haswell, 14 cores, 8 GB RAM) with an increasing number of cores. Complements Figure 6.6.</em></p>
+<p>It is also interesting to show how different compilers behave when vectorizing the evaluation of the model function. We assess the impact of distinct compiler technology next.</p>
+<figure>
+    <img src="/media/root_fitting/compilers.png"
+         alt="Compiler performance for the vectorized unbinned likelihood evaluation"/> <figcaption>
+            <p><em><strong>Figure 6.7</strong>: Compiler comparison (gcc 6.2, clang 3.8, icc 17) for the execution time of the maximum likelihood evaluation, sequentially and vectorized with SSE2. Carried out in double precision.</em></p>
+        </figcaption>
+</figure>
+<p>Observing Figure 6.7, we find out that icc 17 performs a more aggressive auto-vectorization than the other compilers, matching the explicitly vectorized times. For a fairer comparison, avoiding autovectorization when compiling, the results between compilers are similar, with icc slightly outperformed by clang and gcc, and all three compilers continue to track each other closely as the number of threads increases.</p>
+<h2 id="66-conclusions">6.6 Conclusions<a class="anchor" href="#66-conclusions">#</a></h2>
+<p>In this chapter we demonstrate that, with the appropriate tools, we can exploit parallelism at several levels when fitting models in ROOT and, at the same time, preserve the user interfaces. We have shown how, as a result, the users can now vectorize and parallelize their original code and profit from a significant speedup.</p>
+<p>We described the necessary changes to improve the performance of the vectorization introduced for <a href="/blog/cern/dlp/">Data-level parallelism</a>, from structuring our data in a Structure of Arrays to achieve data alignment, to providing safety mechanisms, such as that described for the padding. In addition, we applied the knowledge obtained from the <a href="/blog/cern/tlp/#46-task-granularity-analysis">task granularity analysis</a> to define a heuristic that contributes to balancing the parallel workload. Finally, we parallelized the evaluation of the different objective functions by deploying the executors and adapting the processing of the event loop to a MapReduce model.</p>
+<p>We utilized a real use case to benchmark the parallelization at task-level (multithreading) and data-level of the unbinned maximum likelihood, the Poisson likelihood and the least-square methods, on individual evaluations and on a complete fitting process for each of the objective functions.</p>
+<p>Results differ between objective functions, but in all the benchmarked cases we obtained good acceleration factors when vectorizing, and remarkable ones when parallelizing at task-level. The combination of both task-level and data-level parallelism produces the best results, and both speed up and execution times are consistent across compilers.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p>Baker, S., &amp; Cousins, R. D. (1984). Clarification of the use of chi-square and likelihood functions in fits to histograms. <em>Nuclear Instruments and Methods in Physics Research, 221</em>(2), 437-442. <a href="https://doi.org/10.1016/0167-5087(84)90016-4">link</a> <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:2" role="doc-endnote">
+<p>Least squares: <a href="https://en.wikipedia.org/wiki/Least_squares">https://en.wikipedia.org/wiki/Least_squares</a> <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:3" role="doc-endnote">
+<p>Amadio, G., Canal, P., &amp; Wenzel, S. (2017). root-project/VecCore: Release v0.4.2. <a href="https://github.com/root-project/veccore/">link</a> <a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:4" role="doc-endnote">
+<p>Google Benchmark: <a href="https://github.com/google/benchmark">https://github.com/google/benchmark</a> <a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+              
+          </article>
+          
+
+<ul class="tags__list">
+    
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/root/">root</a>
+    </li></ul>
+
+ <div class="pagination">
+  
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/dlp/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">Data-level parallelism</span>
+    </a>
+  
+
+  
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/executor_applications/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Performance studies</a>
+    </a>
+  
+</div>
+          
+          <footer class="post__footer">
+            <div class="social-icons">
+    
+    
+    
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+    
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+      
+      <div class="toc-container">
+          
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#61-fitting-fundamentals">6.1 Fitting fundamentals</a></li>
+        <li><a href="#62-parallelization-of-the-fitting-in-root">6.2 Parallelization of the fitting in ROOT</a></li>
+        <li><a href="#63-vectorization">6.3 Vectorization</a></li>
+        <li><a href="#64-multiprocessing-and-multithreading">6.4 Multiprocessing and multithreading</a></li>
+        <li><a href="#65-case-example-a-typical-fit">6.5 Case example: A typical fit</a></li>
+        <li><a href="#66-conclusions">6.6 Conclusions</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+      
+    </div>
+    
+
+  </main>
+
+   
+
+  
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+  
+  
+
+  
+    <script src="/js/table-of-contents.js"></script>
+  
+
+
+</body>
+
+</html>

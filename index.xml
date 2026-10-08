@@ -63,6 +63,46 @@ We take a look at the new logging capabilities to asses if the current monitorin
     </item>
     
     <item>
+      <title>Performance studies</title>
+      <link>http://xvallspl.github.io/blog/cern/executor_applications/</link>
+      <pubDate>Thu, 24 Oct 2019 16:28:19 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/executor_applications/</guid>
+      <description>This article is part of a series that I&#39;m slowly publishing, and it still has several broken links referencing unpublished articles.
+ The parallel tools and libraries described throughout this series yield signiﬁcant performance improvements for ROOT and align with its ongoing modernization eﬀort. These tools have been extensively deployed throughout ROOT: training of Deep Neural Networks, parallel merging of ﬁles, parallel processing of ROOT trees, vectorizing the ﬁt, vectorizing mathematical functions and user-deﬁned formulas, parallel writing of histograms, parallel evaluation of the event loop in RDataFrame, and so on.</description>
+    </item>
+    
+    <item>
+      <title>Parallelization of the fit</title>
+      <link>http://xvallspl.github.io/blog/cern/root_fitting/</link>
+      <pubDate>Thu, 19 Sep 2019 10:05:51 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/root_fitting/</guid>
+      <description>This article is part of a series that I&#39;m slowly publishing, and it still has several broken links referencing unpublished articles.
+ Fitting of data distributions is one of the most demanding and computing-intensive activities when performing data analysis on the results of the LHC.</description>
+    </item>
+    
+    <item>
+      <title>Data-level parallelism</title>
+      <link>http://xvallspl.github.io/blog/cern/dlp/</link>
+      <pubDate>Thu, 29 Aug 2019 14:40:07 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/dlp/</guid>
+      <description>This article is part of a series that I&#39;m slowly publishing, and it still has several broken links referencing unpublished articles.
+ In addition to task-level parallelism, where we distribute the workload between the multiple cores or processors of a system, we can further parallelize the computations performed in each core by taking advantage of data-level parallelism. Modern architectures support diﬀerent SIMD instruction sets that enable us to capitalize on the larger CPU registers existing in current computers to perform simultaneous operations on multiple data elements.</description>
+    </item>
+    
+    <item>
+      <title>Task-level parallelism</title>
+      <link>http://xvallspl.github.io/blog/cern/tlp/</link>
+      <pubDate>Thu, 18 Jul 2019 11:15:32 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/tlp/</guid>
+      <description>This article is part of a series that I&#39;m slowly publishing, and it still has several broken links referencing unpublished articles.
+ Contemporary HEP analysis requires the processing of large quantities of data. With the breakdown of Dennard scaling1 in the early 2000s, and the subsequent decrease in CPU clock speed, alternative solutions were required to satisfy the demands of modern physics analyses.</description>
+    </item>
+    
+    <item>
       <title>ROOT</title>
       <link>http://xvallspl.github.io/blog/cern/root/</link>
       <pubDate>Thu, 13 Jun 2019 09:02:03 +0200</pubDate>
