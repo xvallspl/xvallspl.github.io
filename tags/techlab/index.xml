@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Techlab on Xavier Valls Pla</title>
+    <link>http://xvallspl.github.io/tags/techlab/</link>
+    <description>Recent content in Techlab on Xavier Valls Pla</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 21 Mar 2020 09:12:26 +0200</lastBuildDate>
+
+	<atom:link href="http://xvallspl.github.io/tags/techlab/index.xml" rel="self" type="application/rss+xml" />
+
+    <item>
+      <title>Improving configuration and monitoring of Nvidia GPU servers at CERN</title>
+      <link>http://xvallspl.github.io/blog/cern/cuda/</link>
+      <pubDate>Sat, 21 Mar 2020 09:12:26 +0200</pubDate>
+
+      <guid>http://xvallspl.github.io/blog/cern/cuda/</guid>
+      <description>One of Techlab&amp;rsquo;s main activities, arguably the most popular one, is the provisioning of GPU resources. In addition to user support, this process involves the complete configuration, administration, lifetime management and maintenance of the systems.</description>
+    </item>
+
+    <item>
+      <title>Automatizing Techlab&#39;s Request Management Process</title>
+      <link>http://xvallspl.github.io/blog/cern/rms/</link>
+      <pubDate>Sat, 21 Dec 2019 09:12:19 +0200</pubDate>
+
+      <guid>http://xvallspl.github.io/blog/cern/rms/</guid>
+      <description>Warning   This is an old post, Techlab was an interesting project that, unfortunately, no longer exist.
+  Background on Techlab, from the website   Techlab is a CERN IT project providing testing/benchmarking platforms for multiple architectures and accelerators.</description>
+    </item>
+
+  </channel>
+</rss>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>Porting SixDesk&#39;s post-processing to Python and SQL | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+
+
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+
+
+
+
+
+
+
+
+
+
+
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+
+
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" integrity="sha384-3rdsX6e5mueWyoweR9NIVmtEsUkokpBT/0ALqKKIBMr9j4qhHkaIkAcGgsE6uVlp" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" integrity="sha384-QFFtAGzvvj+bfgCGxXJlNZZR1nXEZgvG8tDLCCY1F19xl20WlfTYgguB4VcNdxYk" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body, {throwOnError: false});"></script>
+
+
+
+
+
+
+<script type="application/ld+json">
+
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "Porting SixDesk's post-processing to Python and SQL",
+      "headline" : "Porting SixDesk's post-processing to Python and SQL",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2016",
+      "datePublished": "2016-05-23 09:45:00 +0200 CEST",
+      "dateModified" : "2016-05-23 09:45:00 +0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/sixdeskdb\/",
+      "wordCount" : "2085",
+      "keywords" : ["Blog"]
+    }
+
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+
+
+      <li>
+        <a  href="/">about</a>
+      </li>
+
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+
+  </ul>
+</nav>
+
+
+  <main>
+
+
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">Porting SixDesk&#39;s post-processing to Python and SQL</h1>
+            <time datetime="2016-05-23 09:45:00 &#43;0200 CEST" class="post__date">May 23 2016</time>
+          </header>
+          <article class="post__content">
+
+<section class="warning_block"> <p>This article is part of a short series adapted from my Bachelor's thesis on post-processing routines for long-term beam stability in particle accelerators. Some of the implementation details below reflect SixDesk/SixDeskDB as they stood in 2015-16 and may not match their current state.</p></section>
+<p>The <a href="/blog/cern/sixtrack/">previous article</a> in this series walked through <code>postpr</code>, SixTrack's Fortran post-processing subroutine, and the pile of interdependent Bash, AWK and Fortran scripts SixDesk wraps around it to turn a full dynamic-aperture study into a handful of plots. This last article in the series covers the actual engineering contribution of the thesis: porting that whole pipeline to a database-centered Python and SQL implementation, SixDeskDB.</p>
+<h2 id="1-sixdeskdb-sixdesks-database-port">1. SixDeskDB: SixDesk&#39;s Database Port<a class="anchor" href="#1-sixdeskdb-sixdesks-database-port">#</a></h2>
+<p>During 2014, and especially over the summer with the help of students provided by Google Summer of Code, a database-centered Python port of SixDesk was developed. Using a database approach has several benefits:</p>
+<ul>
+<li><p><strong>Reduces complexity</strong>: it replaces a design made of several interdependent Bash, AWK, GNUPlot and Fortran scripts with a Python implementation that uses SQL for queries.</p></li>
+<li><p><strong>Solves AFS's limitations</strong>: AFS can hold, at most, around two thousand entries in a single directory, but longer SixTrack simulations demand far more entries than that for all the files they generate. Using a database as the file and data server removes this limitation entirely.</p></li>
+<li><p><strong>No need to know Fortran</strong>: it's implemented in Python and SQL, both less complex, more flexible and far more widely used than Fortran.</p></li>
+<li><p><strong>Improves execution times</strong>: removing all the operations that require writing a huge amount of files to disk dramatically improves execution time.</p></li>
+<li><p><strong>Introduces object-oriented programming</strong>, with its benefits (and trade-offs) applied to SixTrack.</p></li>
+<li><p><strong>Adds flexibility</strong>: generating every file and plot into a rigid filesystem tree is no longer required; they can instead be produced on request, which makes them easier to manipulate and leaves more room to extend or change the code later.</p></li>
+<li><p><strong>Allows the use of modern, popular, state-of-the-art scientific libraries</strong>: NumPy and SciPy can be used without as much of a performance hit as one might expect from replacing Fortran with an interpreted language.</p></li>
+</ul>
+<p>On the other hand, it does add a new language to the stack needed to work with SixTrack, and it will eventually require its own adaptation for use with the LHC@Home platform.</p>
+<h2 id="2-the-post-processing-run">2. The Post-Processing Run<a class="anchor" href="#2-the-post-processing-run">#</a></h2>
+<p>SixDesk's post-processing run makes use of several interdependent Bash, AWK, GNUPlot and Fortran scripts, alongside a series of configuration files and SixTrack's own tracking output files.</p>
+<p>The main script to run is <code>run_post</code>, after <code>run_join10</code> and <code>run_awk</code> have prepared, on request, the files it takes as input: <code>run_join10</code> combines all the individual <code>fort.10</code> files from a study into a single joint file (the same joining step the previous article described), and <code>run_awk</code> takes that joint file and parses it into the intermediate files the plotting step needs. The important functions actually called during the post-processing run are <code>read10b</code> and <code>readplotb</code>, where the core post-processing calculations happen — these are the two Fortran functions SixDeskDB needs to port, together with the management and looping currently spread across several Bash scripts around them.</p>
+<p>After the post-processing run, the results come out in a file tree structure like the one in Figure 1, with some of the binary output files carrying further information about the process also stored automatically in CASTOR<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>.</p>
+<figure>
+    <img src="/media/sixdeskdb/SixDeskfiletree.png"
+         alt="SixDesk output file tree"/> <figcaption>
+            <p><em><strong>Figure 1</strong>: SixDesk's output file tree for a long run. The output files are generated along a path following the structure <code>/&lt;seed&gt;/simul/&lt;tune range&gt;/&lt;amplitude range&gt;/&lt;order of the number of turns&gt;/&lt;angle&gt;/outputFiles</code>.</em></p>
+        </figcaption>
+</figure>
+<p>It's worth noting how quickly a typical SixTrack DA study for the LHC — 5 angles in phase-space across 60 seeds — exceeds AFS's directory-entry limitations, and how long it takes to compute and write to disk this way. Hence the need for a new implementation.</p>
+<h2 id="3-design-and-implementation">3. Design and Implementation<a class="anchor" href="#3-design-and-implementation">#</a></h2>
+<p>The code developed aims to fully reproduce the physics side of SixDesk's post-processing run — the code in the <code>read10b</code> and <code>readplotb</code> Fortran files, together with the Bash scripts that launch and loop over them. That means performing dynamic-aperture analysis, finding particle losses and chaotic boundaries, and so on. The first design decision was to move this analysis out of SixDeskDB's main class entirely, into a class of its own, rethinking the software architecture around it. (At the time of writing, this is still an unfinished project — everything described here reflects its state at this particular moment.)</p>
+<p>Figure 2 shows a simplified dependency diagram for the classes involved.</p>
+<figure>
+    <img src="/media/sixdeskdb/SDreduced.png"
+         alt="Dependency diagram for SixDeskDB's post-processing classes"/> <figcaption>
+            <p><em><strong>Figure 2</strong>: Dependencies between classes and functions in this project's implementation of the post-processing run.</em></p>
+        </figcaption>
+</figure>
+<p>There are a few interesting things to note about how these classes work together:</p>
+<ul>
+<li><p><strong><code>SixDeskDB</code></strong>: SixDesk's main Python class. It does almost everything SixDesk can do, and although at this stage its role isn't to perform every operation itself, it's in charge of reading the input files, OS and file management, and serving as the interface users call to run each of SixDesk's modules and analyses. This project adds the <code>mk_da</code> function (short for "make dynamic aperture analysis"), which invokes the post-processing run; the <code>read10b</code> function still remains to be ported from this class into <code>PostProcessing</code>.</p></li>
+<li><p><strong><code>Fort</code></strong>: a new, auxiliary class that serves as an interface to retrieve the various <code>fort</code> files from the database, hiding the SQL queries from the physics code — and even from <code>Fort</code> itself, since they're defined separately in <code>queries.py</code> — and giving a more intuitive way to explore the data: every field in every <code>fort</code> file is named, for easy access, filtering and manipulation. This way of working with the database is already fully integrated into <code>PostProcessing</code> and <code>Post_Plot</code>, and is making its way into <code>SixDeskDB</code> itself.</p></li>
+<li><p><strong><code>PostProcessing</code></strong>: the class in charge of the physics computations and of generating the output/results <code>fort</code> files. It currently implements SixDesk's <code>readplotb</code> function.</p></li>
+<li><p><strong><code>Post_Plot</code></strong>: the plotting class. It defines the mechanisms needed to generate plots (for long runs only, at the moment) and answers <code>PostProcessing</code>'s <code>plot()</code> call.</p></li>
+</ul>
+<p>This structure adds another layer of complexity to SixDeskDB, but in return it brings a few real advantages: <strong>Fort files on request</strong>, since the <code>Fort</code> class can retrieve any generated Fort file on request, indexed by angle and seed, without writing redundant files to disk, and can even recover intermediate post-processing files that the original <code>run_post</code> discarded; <strong>plots on request</strong> instead of generating every plot during the run, cutting out a lot of unnecessary work; <strong>clarity</strong>, since Python's mandatory indentation and object-oriented style, combined with using a single language to code in (and SQL to query), make the code far easier to structure, maintain and understand than the original scripts; <strong>easily modifiable queries</strong>, since keeping the queries that retrieve and generate <code>fort</code>-file data in one separate file makes them faster to change and easier to extend with new ones; and <strong>control over the output</strong>, since the <code>Fort</code> class exposes the same data SixDesk's Fortran code generates, structured the same way, with useful extras like indexing by variable layered on top.</p>
+<p>Table 1 lists the output <code>fort</code> files this implementation reproduces and the columns tracked in each; Table 2 describes what each of those columns actually means.</p>
+<table>
+<thead>
+<tr><th>File</th><th>Columns</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fort.11</code></td><td><code>achaos, al, amin, amax, achaos1</code></td></tr>
+<tr><td><code>fort.12</code></td><td><code>rad, distp</code></td></tr>
+<tr><td><code>fort.13</code></td><td><code>rad, dist</code></td></tr>
+<tr><td><code>fort.14</code></td><td><code>achaos, alost3, turn_max, f14</code></td></tr>
+<tr><td><code>fort.15</code></td><td><code>rad, sturns1, sturns2</code></td></tr>
+<tr><td><code>fort.16</code></td><td><code>deltap, qx, qy</code></td></tr>
+<tr><td><code>fort.17</code></td><td><code>deltap, qx, qy</code></td></tr>
+<tr><td><code>fort.18</code></td><td><code>rad, smearx</code></td></tr>
+<tr><td><code>fort.19</code></td><td><code>rad, smeary</code></td></tr>
+<tr><td><code>fort.20</code></td><td><code>rad, qx_det</code></td></tr>
+<tr><td><code>fort.21</code></td><td><code>rad, qy_det</code></td></tr>
+<tr><td><code>fort.22</code></td><td><code>rad, rad1*sigxminnld</code></td></tr>
+<tr><td><code>fort.23</code></td><td><code>rad, rad1*sigxavgnld</code></td></tr>
+<tr><td><code>fort.24</code></td><td><code>rad, rad1*sigxmaxnld</code></td></tr>
+<tr><td><code>fort.25</code></td><td><code>qx_det, qy_det, qx_det+qx, qy_det+qy</code></td></tr>
+<tr><td><code>fort.26</code></td><td><code>achaos, alost2, amax</code></td></tr>
+<tr><td><code>fort.27</code></td><td><code>al</code></td></tr>
+<tr><td><code>fort.28</code></td><td><code>al</code></td></tr>
+<tr><td><code>fort.40</code></td><td><code>achaos, al, amin, amax</code></td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 1</strong>: Reference table for the output <code>fort</code> files and the variables tracked in them.</em></p>
+<table>
+<thead>
+<tr><th>Column</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>achaos</code></td><td>the chaotic boundary, with the slope method</td></tr>
+<tr><td><code>achaos1</code></td><td>distance in phase-space, with the slope method</td></tr>
+<tr><td><code>al</code></td><td>aperture lost</td></tr>
+<tr><td><code>amin</code></td><td>minimum aperture</td></tr>
+<tr><td><code>amax</code></td><td>maximum aperture</td></tr>
+<tr><td><code>rad</code></td><td>ratio ε<sub>I</sub>/ε (or ε<sub>II</sub>/ε), where ε = ε<sub>I</sub>² + ε<sub>II</sub>², normalized to the user-specified beam emittance</td></tr>
+<tr><td><code>rad1</code></td><td>the same quantity as <code>rad</code>, but evaluated using the average amplitudes and secondary beta functions</td></tr>
+<tr><td><code>dist</code></td><td>distance in phase-space</td></tr>
+<tr><td><code>distp</code></td><td>maximum slope of the distance in phase-space</td></tr>
+<tr><td><code>alost1</code></td><td>average, corrected initial condition of a lost particle</td></tr>
+<tr><td><code>alost2</code></td><td>initial condition of a lost particle</td></tr>
+<tr><td><code>turn_max</code></td><td>maximum number of turns</td></tr>
+<tr><td><code>sturns1</code>, <code>sturns2</code></td><td>survived turns of the first and second particle of the pair</td></tr>
+<tr><td><code>deltap</code></td><td>relative momentum deviation</td></tr>
+<tr><td><code>qx</code>, <code>qy</code></td><td>horizontal and vertical tune</td></tr>
+<tr><td><code>qx_det</code>, <code>qy_det</code></td><td>horizontal and vertical detuning</td></tr>
+<tr><td><code>smearx</code>, <code>smeary</code></td><td>horizontal and vertical smear</td></tr>
+</tbody>
+</table>
+<p><em><strong>Table 2</strong>: Output <code>fort</code> files' column names (variables) reference.</em></p>
+<h2 id="4-results-and-plotting">4. Results and Plotting<a class="anchor" href="#4-results-and-plotting">#</a></h2>
+<p>All results produced by this implementation have been checked to match the originals to a precision of ten decimal places — more than enough, considering the values are stored as strings in the database.</p>
+<p>Alongside the numerical results, a plotting module was developed to replace the entangled web of Bash and AWK scripts that made up SixDesk's original plotting functionality, built on Matplotlib instead of GNUPlot. Every long-run plot has been reproduced and matches its original, which is itself a useful cross-check of the results. One caveat: because of a bug in the version of Matplotlib paired with the NumPy version used at CERN at the time, logarithmic axis scales couldn't be used in the new plots — which is why, in the comparison below, the new survival-time plot uses a linear y-axis where the original used a logarithmic one.</p>
+<figure>
+    <img src="/media/sixdeskdb/distance_old.png"
+         alt="SixDesk's original GNUPlot rendering of the distance in phase-space"/> <figcaption>
+            <p><em>SixDesk (original)</em></p>
+        </figcaption>
+</figure>
+<figure>
+    <img src="/media/sixdeskdb/db_distance.png"
+         alt="SixDeskDB's Matplotlib rendering of the distance in phase-space"/> <figcaption>
+            <p><em>SixDeskDB (ported)</em></p>
+        </figcaption>
+</figure>
+<p><em><strong>Figure 3</strong>: Distance in phase-space of two initially close-by particles — the end value of <em>d</em>(turns) as a function of initial amplitude, for seed 1, angle 7 — reproduced in SixDeskDB (bottom) against SixDesk's original GNUPlot output (top).</em></p>
+<figure>
+    <img src="/media/sixdeskdb/survival_old.png"
+         alt="SixDesk's original GNUPlot rendering of survival time"/> <figcaption>
+            <p><em>SixDesk (original)</em></p>
+        </figcaption>
+</figure>
+<figure>
+    <img src="/media/sixdeskdb/db_survival.png"
+         alt="SixDeskDB's Matplotlib rendering of survival time"/> <figcaption>
+            <p><em>SixDeskDB (ported)</em></p>
+        </figcaption>
+</figure>
+<p><em><strong>Figure 4</strong>: Survival time versus initial amplitude, for seed 1, angle 1 — SixDeskDB's version (bottom) against the original (top); note the linear instead of logarithmic y-axis, for the Matplotlib reason mentioned above.</em></p>
+<h2 id="5-conclusions">5. Conclusions<a class="anchor" href="#5-conclusions">#</a></h2>
+<p>Post-processing is the key feature of SixDesk, and one of the core parts of SixTrack. Documenting it thoroughly — precisely enough to trace what SixTrack is doing at each step of the post-processing — matters in its own right: the original authors of this code were, for a long time, the only people who really understood how it worked, and they stopped actively working on the project around a decade ago. Beyond the code itself, what was needed most was an adaptation of the theoretical foundations — mostly worked out in 4D in the literature — to the full 6D phase-space SixTrack actually works in; getting there meant carefully inspecting the Fortran code and its program flow and cross-checking the results against the 4D derivations and the theory this series opened with.</p>
+<p>SixDeskDB takes that documented understanding and turns it into a modern, modular, widely-used and clear implementation in Python. Since Python is one of the most used languages at CERN, this port opens up the development of new SixDesk analyses to a much wider audience than the original Fortran and Bash ever could, and it brings SixDeskDB a step closer to being able to fully replace SixDesk itself — now faster to develop against, more efficient with disk space, quicker to execute, and augmented with features like fetching plots and Fort files on request through a friendly interface that hides the SQL behind it.</p>
+<p>There's plenty of work still ahead: post-processing short runs and integrating them into the program flow; refactoring <code>readplotb</code> to share more of its code with the new <code>read10b</code>; integrating the <code>Fort</code> class more fully across the rest of SixDeskDB; documenting SixDeskDB's own variables independently of SixDesk's; and, further out, new physics models, integration with the LHC@Home platform, consolidating the various homegrown forks of SixTrack, and improving the precision and use of floating-point arithmetic throughout.</p>
+<p>This wraps up this short series — from the beam dynamics and particle tracking theory it all rests on, through SixTrack's own Fortran post-processing, to this Python and SQL port of it. If you'd like to go back to the start, the first article is <a href="/blog/cern/beam-dynamics/">Particle tracking and beam dynamics in accelerators</a>.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p>Presti, G. L., Barring, O., Earl, A., Rioja, R. M. G., Ponce, S., Taurelli, G., Waldron, D., &amp; Dos Santos, M. C. (2007). CASTOR: A Distributed Storage Resource Facility for High Performance Data Processing at CERN. <em>MSST</em>, 7, 275-280. <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+
+          </article>
+
+
+<ul class="tags__list">
+
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/python/">python</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/accelerator-physics/">accelerator physics</a>
+    </li></ul>
+
+ <div class="pagination">
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/sixtrack/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">SixTrack: tracking particles and post-processing long-term stability data</span>
+    </a>
+
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/analysischain/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Physics analysis in the LHC era</a>
+    </a>
+
+</div>
+
+
+          <footer class="post__footer">
+            <div class="social-icons">
+
+
+
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+
+      <div class="toc-container">
+
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#1-sixdeskdb-sixdesks-database-port">1. SixDeskDB: SixDesk&#39;s Database Port</a></li>
+        <li><a href="#2-the-post-processing-run">2. The Post-Processing Run</a></li>
+        <li><a href="#3-design-and-implementation">3. Design and Implementation</a></li>
+        <li><a href="#4-results-and-plotting">4. Results and Plotting</a></li>
+        <li><a href="#5-conclusions">5. Conclusions</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+
+    </div>
+
+
+  </main>
+
+
+
+
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+
+
+
+
+    <script src="/js/table-of-contents.js"></script>
+
+
+
+</body>
+
+</html>

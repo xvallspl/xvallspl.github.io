@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en-us">
+
+<head>
+  <title>SixTrack: tracking particles and post-processing long-term stability data | Xavier Valls Pla</title>
+
+  <meta charset="UTF-8">
+  <meta name="language" content="en">
+  <meta name="description" content="">
+  <meta name="keywords" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+
+
+
+  <link rel="shortcut icon" type="image/png" href="/favicon.ico" />
+
+
+
+
+
+
+
+
+
+
+
+
+    <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
+
+
+    <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" integrity="sha384-3rdsX6e5mueWyoweR9NIVmtEsUkokpBT/0ALqKKIBMr9j4qhHkaIkAcGgsE6uVlp" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" integrity="sha384-QFFtAGzvvj+bfgCGxXJlNZZR1nXEZgvG8tDLCCY1F19xl20WlfTYgguB4VcNdxYk" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body, {throwOnError: false});"></script>
+
+
+
+
+
+
+<script type="application/ld+json">
+
+    {
+      "@context" : "http://schema.org",
+      "@type" : "BlogPosting",
+      "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": "http:\/\/xvallspl.github.io\/"
+      },
+      "articleSection" : "blog",
+      "name" : "SixTrack: tracking particles and post-processing long-term stability data",
+      "headline" : "SixTrack: tracking particles and post-processing long-term stability data",
+      "description" : "",
+      "inLanguage" : "en-US",
+      "author" : "",
+      "creator" : "",
+      "publisher": "",
+      "accountablePerson" : "",
+      "copyrightHolder" : "",
+      "copyrightYear" : "2016",
+      "datePublished": "2016-04-18 11:00:00 +0200 CEST",
+      "dateModified" : "2016-04-18 11:00:00 +0200 CEST",
+      "url" : "http:\/\/xvallspl.github.io\/blog\/cern\/sixtrack\/",
+      "wordCount" : "1953",
+      "keywords" : ["Blog"]
+    }
+
+  </script>
+</head>
+
+<body>
+  <div class="burger__container">
+  <div class="burger" aria-controls="navigation" aria-label="Menu">
+    <div class="burger__meat burger__meat--1"></div>
+    <div class="burger__meat burger__meat--2"></div>
+    <div class="burger__meat burger__meat--3"></div>
+  </div>
+</div>
+
+
+  <nav class="nav" id="navigation">
+  <ul class="nav__list">
+
+
+      <li>
+        <a  href="/">about</a>
+      </li>
+
+      <li>
+        <a  class="active"
+         href="/blog">blog</a>
+      </li>
+
+  </ul>
+</nav>
+
+
+  <main>
+
+
+
+    <div class="flex-wrapper">
+      <div class="post__container">
+        <div class="post">
+          <header class="post__header">
+            <h1 id="post__title">SixTrack: tracking particles and post-processing long-term stability data</h1>
+            <time datetime="2016-04-18 11:00:00 &#43;0200 CEST" class="post__date">Apr 18 2016</time>
+          </header>
+          <article class="post__content">
+
+<section class="warning_block"> <p>This article is part of a short series adapted from my Bachelor's thesis on post-processing routines for long-term beam stability in particle accelerators.</p></section>
+<p>The <a href="/blog/cern/beam-dynamics/">previous article</a> in this series laid out the coordinate systems, Hamiltonian mechanics and beam optics used to describe a particle's motion in an accelerator. This one introduces SixTrack, the particle-tracking code that actually puts that theory to work for the LHC, describes the problems it's built to tackle, and walks through its post-processing subroutine — the part of the code this whole series is ultimately about documenting, and eventually porting to Python.</p>
+<h2 id="1-particle-tracking">1. Particle Tracking<a class="anchor" href="#1-particle-tracking">#</a></h2>
+<p>Particle tracking has become a key tool for the simulation and study of beam behaviour inside an accelerator. We use it for, among other things, calculating and predicting the dynamic aperture (the effective aperture of the particle motion) and its dependence on non-linearities and tunes, finding closed-orbit distortions, or assessing the long-term stability of the beam.</p>
+<p>Over the past thirty years, simulation codes like SixTrack, MAD-X, RACETRACK<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup> or PTC have been developed to apply particle-tracking techniques from different angles. These codes simulate the movement of a particle inside the high-energy ring for thousands of turns, observing its characteristics — amplitude, phase advance, coordinates — at the same position <em>s₀</em> on every one of those turns.</p>
+<p>Tracking codes have traditionally struggled with rounding precision and limited CPU time. Processing time has steadily improved, helped along by distributed-computing efforts like the CPSS project and the LHC@Home platform we met in the previous article, but the problem of rounding-related differences between platforms persisted for every available compiler until SixTrack finally solved it by including the <code>crlibm</code> library, which corrects rounding-error differences in a portable way, together with strict ordering of operations and specific compiler flags — making the result numerically reproducible across machines.</p>
+<p>A typical SixTrack dynamic-aperture study for the LHC involves simulating 5 different angles in phase-space and 60 different representations of the magnetic errors (seeds), tracking 30 pairs of particles for 10⁵ turns in each case. A study of that size can take several days, since each individual case needs around 2 hours of computing time to finish.</p>
+<h2 id="2-sixtrack">2. SixTrack<a class="anchor" href="#2-sixtrack">#</a></h2>
+<p>SixTrack<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup> is a single-particle, six-dimensional symplectic tracking code optimized for long-term tracking in high-energy rings. Based on RACETRACK and first published in 1990 by Frank Schmidt, it has been used for several kinds of LHC studies: dynamic aperture, tune optimization, collimation studies, and more. SixTrack has been under heavy development for the past 25 years<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup>, and keeps evolving with improvements like the database-based post-processing port this series covers, new physics models, new particle parameters (mass, charge state), and GPU libraries to offload the computationally heavy parts.</p>
+<p>SixTrack is written in Fortran 77 and comes to more than 70,000 lines of code, in a structure that requires a pre-processor to simplify the code and substitute special expressions in the source files, applying the Differential Algebra extension for Fortran (DAFOR). Figure 1 shows the shape of this build process.</p>
+<figure>
+    <img src="/media/sixtrack/build-process.png"
+         alt="SixTrack build process diagram"/> <figcaption>
+            <p><em><strong>Figure 1</strong>: SixTrack build process. The <code>make_six</code> script generates an <code>.ast</code> mask file for each Fortran file to be produced; these masks select the blocks of code from three <code>.s</code> source files (<code>sixtrack.s</code>, <code>lielib.s</code> and <code>dabnew.s</code>) that end up in the final Fortran files, which are then linked and compiled into the SixTrack executable.</em></p>
+        </figcaption>
+</figure>
+<p>Running <code>make_six</code> generates five Fortran files: <code>track.f</code>, containing the tracking maps for every lattice element (dipoles, quadrupoles, octupoles, RF cavities, higher-order magnets, crab cavities); <code>sixve.f</code>, the main file, defining the main program, most subroutines, and the <code>postpr</code> post-processing subroutine this article is mostly about; <code>sixvefox.f</code>, containing the subroutines for the closed-orbit and lattice-optics mapping, using a differential-algebra approach; <code>lielib.f</code>, E. Forest's subroutines for normal-form calculations; and <code>dabnews.f</code>, the DAFOR subroutines called by <code>sixvefox.f</code> during the closed-orbit calculation.</p>
+<p>These files are compiled into a single Fortran executable, which takes as input the description of the accelerator in the <code>fort.2</code> file and the settings and description of the elements in the <code>fort.3</code> file. It then initializes all parameters and variables, computes the six-dimensional closed orbit together with the Courant-Snyder invariants introduced in the previous article, and performs the tracking. Finally, the tracking data is analyzed and post-processed as specified in <code>fort.3</code>.</p>
+<h2 id="3-sixtracks-post-processing-a-walkthrough">3. SixTrack&#39;s Post-Processing: A Walkthrough<a class="anchor" href="#3-sixtracks-post-processing-a-walkthrough">#</a></h2>
+<p>The <code>postpr</code> subroutine is SixTrack's post-processing engine. It reads the binary tracking output — one record per turn, per particle pair, written to the <code>fort.10</code> file in a fixed, documented binary layout — and reduces thousands of turns of raw six-dimensional coordinates down to a handful of physically meaningful numbers per angle and seed: an estimate of the dynamic aperture, a measure of how non-linear the motion really was, and how many turns each particle pair actually survived before being lost. None of that mapping — which Fortran variable corresponds to which physical quantity, and which formula from the <a href="/blog/cern/beam-dynamics/">previous article</a> each block of code is actually evaluating — came with the code or with the papers it cites; working it out, variable by variable, against the beam-optics formulas is what makes the rest of this section possible. The description below covers the overall shape of that process and a few of its more interesting steps; the implementation details reflect SixTrack as it stood around 2015-16, and parts of it may well have evolved since.</p>
+<p>After opening the binary file, <code>postpr</code> first reads its header: the number of particle pairs and turns to expect, the closed orbit and dispersion vectors, and the one-turn transfer matrix (and its inverse) at the observation point, all of which the rest of the subroutine will need to compute deviations and invariants correctly for this particular study.</p>
+<p>After reading the file's header and initializing its parameters, the very first thing <code>postpr</code> does with the actual tracking data is call a subroutine called <code>distance</code>, which computes the separation, in phase-space, between a particle and its "twin" — a second particle launched from an almost identical initial condition. SixTrack always tracks particles in such close-by pairs for exactly this reason: as long as the motion is linear, two initially close-by particles stay close together turn after turn, but as soon as non-linear effects become significant their separation starts to grow, and tracking how fast it grows (essentially estimating a Lyapunov exponent) is one of the main ways SixTrack detects the onset of chaotic motion — and with it, the dynamic aperture.</p>
+<p>From there, <code>postpr</code> computes the deviation of each particle's coordinates from the closed orbit — what the code calls <code>c</code>, <code>d</code>, <code>e</code>, <code>f</code> and the Fortran source denotes \(\tilde{x}, \tilde{x}', \tilde{y}, \tilde{y}'\) — and feeds them into two lines that, on their own, look like unremarkable Fortran arithmetic:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fortran" data-lang="fortran"><span style="color: #F8F8F2">xp0 </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> bet0(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">)</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">d </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> alf0(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">)</span><span style="color: #FF79C6">*</span><span style="color: #F8F8F2">c</span>
+<span style="color: #F8F8F2">emx </span><span style="color: #FF79C6">=</span><span style="color: #F8F8F2"> (c</span><span style="color: #FF79C6">**</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2"> </span><span style="color: #FF79C6">+</span><span style="color: #F8F8F2"> xp0</span><span style="color: #FF79C6">**</span><span style="color: #FFB86C">2</span><span style="color: #F8F8F2">) </span><span style="color: #FF79C6">/</span><span style="color: #F8F8F2"> bet0(</span><span style="color: #FFB86C">1</span><span style="color: #F8F8F2">)</span>
+</code></pre></div>
+<p>Matched up against the beam-optics formulas from the <a href="/blog/cern/beam-dynamics/">previous article</a> — none of which appear anywhere in SixTrack's source or comments — these two lines turn out to be exactly the Courant-Snyder invariant for the horizontal plane:</p>
+\[
+xp_0=\beta_{xI}\tilde{x}'+\alpha_{xI}\tilde{x}, \qquad
+\epsilon_x=\frac{\tilde{x}^2+(\beta_{xI}\tilde{x}'+\alpha_{xI}\tilde{x})^2}{\beta_{xI}},
+\]
+<p>with <code>bet0(1)</code> and <code>alf0(1)</code> holding the horizontal \(\beta_{xI}\) and \(\alpha_{xI}\) lattice functions computed earlier in the run. The vertical emittance \(\epsilon_y\) follows the identical pattern one plane over, and the combined transverse emittance is simply \(\epsilon_{vt}=\epsilon_x+\epsilon_y\). <code>postpr</code> keeps running maximum, minimum and average values of each of these three emittances as it goes, together with the averaged phase advances.</p>
+<p>From the evolution of these emittances, <code>postpr</code> computes one of its more interesting diagnostics: the <em>smear</em>, essentially the normalized variance of the emittance around its running average, expressed as a percentage. Under purely linear motion the invariant stays constant turn after turn, so its smear is zero; non-linear perturbations make it wobble, and the size of that wobble is a direct, quantitative measure of how non-linear the particle's motion actually is at a given amplitude. SixTrack computes it both for the horizontal and vertical planes separately and for the combined transverse motion, fitting its evolution with two separate fitting functions to smooth out the turn-by-turn noise before reporting a single representative value.</p>
+<p>None of these numbers is very informative in isolation — what actually matters for a dynamic-aperture study is how the smear, the survival turns and the other diagnostics behave as a function of the amplitude at which a given pair of particles was launched, repeated over several angles in phase-space and several seeds representing different realizations of the machine's magnetic errors. A single SixTrack run only produces the numbers for one such angle and seed; it's only once <code>postpr</code>'s output from every run in a study gets collected and compared side by side that a clear picture of the dynamic aperture — the largest amplitude at which motion remains reliably stable — starts to emerge. That collection step is itself a form of post-processing, and it's the one SixDesk is responsible for.</p>
+<p>Finally, <code>postpr</code> keeps track of how many turns each particle pair survives before either one is lost (typically once its amplitude grows past a cut-off) — the <em>survival</em> count — and fits the evolution of the distance between twin particles to extract a maximum slope, a more direct estimate of how quickly chaotic motion is setting in at that angle. Once all the available turns and particle pairs have been processed, <code>postpr</code> prints one summary record per angle and seed — covering the average emittance, the smear, the survival turns and the maximum slope among others — and, optionally, hands the same numbers off to a set of GNUPlot scripts to produce plots of these quantities directly from the Fortran run.</p>
+<h2 id="4-from-sixtrack-to-sixdesks-post-processing">4. From SixTrack to SixDesk&#39;s Post-Processing<a class="anchor" href="#4-from-sixtrack-to-sixdesks-post-processing">#</a></h2>
+<p>SixDesk, the run environment for SixTrack introduced in the previous article, takes the results of a SixTrack study and applies its own post-processing layer on top.</p>
+<p>By default, SixDesk's scripts automatically tar all of a SixTrack run's output files and store them in CASTOR<sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup>, CERN's hierarchical mass-storage system. Among these tars is <code>fort.6</code>, which logs every operation performed and any failures that may have occurred during the run, and a set of binary files, <code>fort.90</code> down to <code>fort.59</code>, used for further analysis and documented in SixTrack's own manual<sup id="fnref:5"><a href="#fn:5" class="footnote-ref" role="doc-noteref">5</a></sup>.</p>
+<p>As for the main output file, <code>fort.10</code>: running the <code>run_join10</code> script gathers the results of all the completed jobs of a study and combines their output files. Once combined, the <code>fort.10</code> data can be post-processed to find the chaotic boundary and the particle losses described above, across an entire study rather than a single run.</p>
+<p>SixDesk also provides a couple of options for plotting, controlled by two <code>sixdeskenv</code> variables: if <code>iplot</code> is set, a plot is produced for every seed (which can generate a very large amount of data, even compressed); and <code>kvar</code>, which, left at its default, produces the dynamic aperture as a function of angle, both per seed and averaged over all seeds — an extremely time-consuming procedure, but one of the most direct ways to visualize a study's overall result.</p>
+<p>That combination — a 70,000-line Fortran codebase, binary files tarred away into mass storage, and a pair of environment-variable flags controlling whether a multi-day plotting pass runs or not — is exactly the shape of the problem the <a href="/blog/cern/sixdeskdb/">next and final article</a> in this series sets out to fix, by porting this whole post-processing pipeline to a Python- and SQL-backed implementation: SixDeskDB.</p>
+<section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p>Wrulich, A. (1984). RACETRACK&#8212;a computer code for the simulation of nonlinear particle motion in accelerators. <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:2" role="doc-endnote">
+<p>Schmidt, F. (1990). Sixtrack. CM-P00049314. <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:3" role="doc-endnote">
+<p>De Maria, R., Previtali, V., Levinsen, Y., Lari, L., Schmidt, F., Renshall, H., Barranco, J., Mereghetti, A., Appleby, R., Vlachoudis, V., et al. (2013). Recent developments and future plans for SixTrack. <a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:4" role="doc-endnote">
+<p>Presti, G. L., Barring, O., Earl, A., Rioja, R. M. G., Ponce, S., Taurelli, G., Waldron, D., &amp; Dos Santos, M. C. (2007). CASTOR: A Distributed Storage Resource Facility for High Performance Data Processing at CERN. <em>MSST</em>, 7, 275-280. <a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:5" role="doc-endnote">
+<p>Schmidt, F. (1994). SixTrack, User's Reference Manual. CERN SL/94-56 (AP). <a href="#fnref:5" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+
+          </article>
+
+
+<ul class="tags__list">
+
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/cern/">cern</a>
+    </li>
+    <li class="tag__item">
+        <a class="tag__link" href="http://xvallspl.github.io/tags/accelerator-physics/">accelerator physics</a>
+    </li></ul>
+
+ <div class="pagination">
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/beam-dynamics/">
+        <span class="pagination__label">Previous Post</span>
+        <span class="pagination__title">Particle tracking and beam dynamics in accelerators</span>
+    </a>
+
+
+    <a class="pagination__item" href="http://xvallspl.github.io/blog/cern/sixdeskdb/">
+      <span class="pagination__label">Next Post</span>
+      <span class="pagination__title" >Porting SixDesk&#39;s post-processing to Python and SQL</a>
+    </a>
+
+</div>
+
+
+          <footer class="post__footer">
+            <div class="social-icons">
+
+
+
+    <a class="social-icons__icon social-icons__icon--linkedin"
+        href="https://www.linkedin.com/in/xaviervallspla"></a>
+
+</div>
+            <p></p>
+          </footer>
+          </div>
+      </div>
+
+      <div class="toc-container">
+
+        <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#1-particle-tracking">1. Particle Tracking</a></li>
+        <li><a href="#2-sixtrack">2. SixTrack</a></li>
+        <li><a href="#3-sixtracks-post-processing-a-walkthrough">3. SixTrack&#39;s Post-Processing: A Walkthrough</a></li>
+        <li><a href="#4-from-sixtrack-to-sixdesks-post-processing">4. From SixTrack to SixDesk&#39;s Post-Processing</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+      </div>
+
+    </div>
+
+
+  </main>
+
+
+
+
+  <script src="/js/index.min.49e4d8a384357d9b445b87371863419937ede9fa77737522ffb633073aebfa44.js" integrity="sha256-SeTYo4Q1fZtEW4c3GGNBmTft6fp3c3Ui/7YzBzrr&#43;kQ=" crossorigin="anonymous"></script>
+
+
+
+
+    <script src="/js/table-of-contents.js"></script>
+
+
+
+</body>
+
+</html>

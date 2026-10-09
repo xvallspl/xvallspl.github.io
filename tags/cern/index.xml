@@ -12,6 +12,43 @@
     
     
     <item>
+      <title>Analysis benchmarks for grid and HPC</title>
+      <link>http://xvallspl.github.io/blog/cern/analysisbenchmarks/</link>
+      <pubDate>Wed, 17 Jun 2020 10:06:55 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/analysisbenchmarks/</guid>
+      <description>Initial description for the Openlab Student project proposed for the summer of 2020 that I supervised.
+To be updated with the student report and probably a paper once they are available.</description>
+    </item>
+    
+    <item>
+      <title>Evaluating nvme-cli new feature logs and the need to monitor them</title>
+      <link>http://xvallspl.github.io/blog/cern/nvme-cli/</link>
+      <pubDate>Fri, 15 May 2020 09:12:26 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/nvme-cli/</guid>
+      <description>NVMe is a new, wider, standarized protocol to access flash-based storage over PCIe interfaces.</description>
+    </item>
+    
+    <item>
+      <title>Improving configuration and monitoring of Nvidia GPU servers at CERN</title>
+      <link>http://xvallspl.github.io/blog/cern/cuda/</link>
+      <pubDate>Sat, 21 Mar 2020 09:12:26 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/cuda/</guid>
+      <description>One of Techlab&#39;s main activities, arguably the most popular one, is the provisioning of GPU resources.</description>
+    </item>
+    
+    <item>
+      <title>Automatizing Techlab&#39;s Request Management Process</title>
+      <link>http://xvallspl.github.io/blog/cern/rms/</link>
+      <pubDate>Sat, 21 Dec 2019 09:12:19 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/rms/</guid>
+      <description>Warning   This is an old post, Techlab was an interesting project that, unfortunately, no longer exist.</description>
+    </item>
+    
+    <item>
       <title>Putting ROOT&#39;s parallel tools to the test</title>
       <link>http://xvallspl.github.io/blog/cern/executor_applications/</link>
       <pubDate>Thu, 24 Oct 2019 16:28:19 +0200</pubDate>
@@ -68,6 +105,36 @@
       
       <guid>http://xvallspl.github.io/blog/cern/analysischain/</guid>
       <description>This article was originally within a longer text dedicated to ROOT, hence the references to it. I wrote this a while ago and some numbers, for instance the amount of data processed, might be outdated. The LHC is a circular particle accelerator located at the European Organization for Nuclear Research (CERN) and one of the most sophisticated machines ever built by humanity. In order to recreate conditions similar to those just after the Big Bang, the LHC circulates a beam of charged particles over its 27 km of circumference, increasing their momentum until they reach the appropriate energy, and then collides them at one of the 4 particle detectors in its ring: A Large Ion Collider Experiment (ALICE), A Toroidal LHC Apparatus (ATLAS), Compact Muon Solenoid (CMS) and Large Hadron Collider beauty (LHCb).</description>
+    </item>
+    
+    <item>
+      <title>Porting SixDesk&#39;s post-processing to Python and SQL</title>
+      <link>http://xvallspl.github.io/blog/cern/sixdeskdb/</link>
+      <pubDate>Mon, 23 May 2016 09:45:00 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/sixdeskdb/</guid>
+      <description>This article is part of a short series adapted from my Bachelor&#39;s thesis on post-processing routines for long-term beam stability in particle accelerators. Some of the implementation details below reflect SixDesk/SixDeskDB as they stood in 2015-16 and may not match their current state.
+ The previous article in this series walked through postpr, SixTrack&#39;s Fortran post-processing subroutine, and the pile of interdependent Bash, AWK and Fortran scripts SixDesk wraps around it to turn a full dynamic-aperture study into a handful of plots.</description>
+    </item>
+    
+    <item>
+      <title>SixTrack: tracking particles and post-processing long-term stability data</title>
+      <link>http://xvallspl.github.io/blog/cern/sixtrack/</link>
+      <pubDate>Mon, 18 Apr 2016 11:00:00 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/sixtrack/</guid>
+      <description>This article is part of a short series adapted from my Bachelor&#39;s thesis on post-processing routines for long-term beam stability in particle accelerators.
+ The previous article in this series laid out the coordinate systems, Hamiltonian mechanics and beam optics used to describe a particle&#39;s motion in an accelerator.</description>
+    </item>
+    
+    <item>
+      <title>Particle tracking and beam dynamics in accelerators</title>
+      <link>http://xvallspl.github.io/blog/cern/beam-dynamics/</link>
+      <pubDate>Mon, 14 Mar 2016 10:30:00 +0100</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/beam-dynamics/</guid>
+      <description>This article is part of a short series adapted from my Bachelor&#39;s thesis on post-processing routines for long-term beam stability in particle accelerators.
+ Accelerators have become a key tool for the study of experimental particle physics. Today, thousands of physicists around the world depend on the results generated by the Large Hadron Collider.</description>
     </item>
     
   </channel>

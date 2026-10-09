@@ -30,6 +30,10 @@
     <link type="text/css" rel="stylesheet" href="/css/post.min.423aef0742dab2335ffc1d5a5b0232425b83fbb8ff30ab07fa55524587262ef4.css" integrity="sha256-QjrvB0LasjNf/B1aWwIyQluD&#43;7j/MKsH&#43;lVSRYcmLvQ="/>
   
     <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" integrity="sha384-3rdsX6e5mueWyoweR9NIVmtEsUkokpBT/0ALqKKIBMr9j4qhHkaIkAcGgsE6uVlp" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" integrity="sha384-QFFtAGzvvj+bfgCGxXJlNZZR1nXEZgvG8tDLCCY1F19xl20WlfTYgguB4VcNdxYk" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body, {throwOnError: false});"></script>
   
   
    
@@ -118,24 +122,43 @@
 <p>If the hypothesis is characterized by the typically unknown parameters θ, then L(θ) = P(x|θ) is called the likelihood function.</p>
 <p>The likelihood function plays a central role in the fitting process, which ultimately consists of inferring θ from x so that we find the probability mass or density function (in this case L(θ)) that better adjusts to the observed data. For this purpose, we need good estimators of the parameters.</p>
 <p>For instance, we are frequently in need of good estimators for the median, mean and variance parameters of a distribution. In this case, a good choice of estimators is to set the median to the sample median and to estimate the mean μ̂ and the variance σ̂² with the unbiased estimators given by the equations</p>
-<p style="text-align:center"><em>μ̂ = (1/n) Σᵢ xᵢ&nbsp;&nbsp;&nbsp;&nbsp;and&nbsp;&nbsp;&nbsp;&nbsp;σ̂² = (1/(n&minus;1)) Σᵢ (xᵢ&minus;μ̂)²</em></p>
+\[
+\hat{\mu} = \frac{1}{n}\sum_{i=1}^n x_i, \qquad \hat{\sigma}^2 = \frac{1}{n-1}\sum_{i=1}^n (x_i - \hat{\mu})^2
+\]
 <h3 id="612-maximum-likelihood">Maximum Likelihood<a class="anchor" href="#612-maximum-likelihood">#</a></h3>
 <p>Given a set of parameters θ, we want to obtain the set of estimators θ̂ that maximize the likelihood function. In other words, the maximum likelihood estimate follows</p>
-<p style="text-align:center"><em>θ̂ = max L(θ)</em></p>
-<p>However, it is frequently more convenient to work with the natural logarithm of the likelihood function, ln L, finding the estimators by solving the equation ∂ ln L / ∂θᵢ = 0, for i = 1, &hellip;, N.</p>
+\[
+\hat{\theta} = \max L(\theta), \qquad \forall \theta \in \Theta,\ \hat\theta \in \hat\Theta
+\]
+<p>However, it is frequently more convenient to work with the natural logarithm of the likelihood function, \(\ln L\), finding the estimators by solving the equation</p>
+\[
+\frac{\partial \ln L}{\partial \theta_i} = 0, \qquad i = 1,\ldots,N.
+\]
 <p>The likelihood function formulation depends on the nature of the data. For example, if the data consists of a fixed number n of independent and identically distributed values following the same p.d.f., the likelihood becomes</p>
-<p style="text-align:center"><em>L(θ) = ∏ᵢ f(xᵢ; θ)</em></p>
+\[
+L(\theta) = \prod_{i=1}^n f(x_i;\theta)
+\]
 <p>where f(x, θ) is the p.d.f. of observing the data x given the set of parameters θ. If the data does not consist of a fixed number of events, but the probability to observe n events follows a Poisson distribution with mean μ depending on the parameter θ, then we obtain the extended likelihood function formula:</p>
-<p style="text-align:center"><em>L(θ) = (μⁿ/n!) e<sup>&minus;μ</sup> ∏ᵢ f(xᵢ; θ)</em></p>
+\[
+L(\theta) = \frac{\mu^{n}}{n!}e^{-\mu}\prod_{i=1}^n f(x_i;\theta)
+\]
 <h3 id="613-binned-maximum-likelihood">Binned maximum likelihood<a class="anchor" href="#613-binned-maximum-likelihood">#</a></h3>
 <p>If the data sample contains a large number of values, it is usually convenient to represent it as a histogram, classifying the values in N bins.</p>
-<p>If, again, the n bins created out of n<sub>tot</sub> events are independent and follow a Poisson distribution, the likelihood function takes the form of a product, over all bins, of Poisson probabilities for observing nᵢ events when μᵢ(θ) are expected, each one further weighted by the p.d.f. of the data within that bin, where μᵢ are the mean values of the bins described as functions of θ, and μ<sub>tot</sub> = Σᵢ μᵢ is the mean of the n<sub>tot</sub> original events of the Poisson distribution.</p>
+<p>If, again, the <em>n</em> bins created out of <em>n<sub>tot</sub></em> events are independent and follow a Poisson distribution, the likelihood function takes the form</p>
+\[
+f_P(n;\theta) = \frac{\mu_i^{n}}{n_i!}e^{-\mu_i}\prod_{i=1}^n f(x_i;\theta),
+\]
+<p>where <em>μᵢ</em> are the mean values of the bins described as functions of <em>θ</em>, and <em>μ<sub>tot</sub></em> = Σᵢ <em>μᵢ</em> is the mean of the <em>n<sub>tot</sub></em> original events of the Poisson distribution.</p>
 <p>By using the likelihood ratio λ(θ) = f<sub>P</sub>(n; θ)/f(n; μ̂), we can obtain, in addition, an indicator of the &ldquo;goodness of fit&rdquo;<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>:</p>
-<p style="text-align:center"><em>&minus;2 ln λ(θ) = 2 Σᵢ [ μᵢ(θ) &minus; nᵢ + nᵢ ln(nᵢ/μᵢ) ]</em></p>
+\[
+-2\ln\lambda(\theta) = 2\sum_{i=1}^N \left[ \mu_i(\theta) - n_{i}+n_i \ln \frac{n_i}{\mu_i^{n}} \right]
+\]
 <h3 id="614-least-squares">Least squares<a class="anchor" href="#614-least-squares">#</a></h3>
 <p>Besides the maximum likelihood, there is an alternative way of inferring the parameters by using the method of the least squares<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup>.</p>
 <p>Given a set of N independent measurements at point yᵢ, with mean μ(xᵢ; θ) and variance σᵢ², the least squares estimators Θ̂ for the unknown parameters Θ can be defined by the equation:</p>
-<p style="text-align:center"><em>χ²(θ) = Σᵢ (yᵢ &minus; μ(xᵢ; θ))² / σᵢ²&nbsp;&nbsp;,&nbsp;&nbsp;∀θ ∈ Θ</em></p>
+\[
+\chi^2(\theta) = \sum_{i=1}^N\frac{(y_i-\mu(x_i;\theta))^2}{\sigma_i^2}, \qquad \forall \theta \in \Theta
+\]
 <p>where the parameters minimizing χ²(θ) maximize the likelihood L. If yᵢ were to be Gaussian distributed, the least squares method would be equivalent to that of the maximum likelihood described above.</p>
 <figure>
     <img src="/media/root_fitting/FittingDiagram.png"

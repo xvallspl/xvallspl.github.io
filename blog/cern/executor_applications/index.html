@@ -33,6 +33,10 @@
 
     <link type="text/css" rel="stylesheet" href="/css/custom.min.e82b10a78547c055d0865dc60c44d991716134ea551429c086ee814d26150ee1.css" integrity="sha256-6CsQp4VHwFXQhl3GDETZkXFhNOpVFCnAhu6BTSYVDuE="/>
 
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" integrity="sha384-3rdsX6e5mueWyoweR9NIVmtEsUkokpBT/0ALqKKIBMr9j4qhHkaIkAcGgsE6uVlp" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js" integrity="sha384-QFFtAGzvvj+bfgCGxXJlNZZR1nXEZgvG8tDLCCY1F19xl20WlfTYgguB4VcNdxYk" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body, {throwOnError: false});"></script>
+
 
 
 
@@ -115,14 +119,20 @@
 <span id="hadd"></span>
 <p>Merging ROOT ﬁles is a common but expensive operation. ROOT oﬀers a tool for this purpose, <code>hadd</code>, that could beneﬁt from parallelization. Concretely, <code>hadd</code> is a standalone application distributed with ROOT whose objective is to merge several ROOT ﬁles containing ROOT trees or histograms into a new ﬁle, by exploiting the <code>Merge()</code> method of these classes and ROOT&#39;s ﬁle-managing utilities, e.g. <code>TFileMerger</code><sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>.</p>
 <p>This is an easily parallelizable procedure, for instance, by relying on recursive hierarchical merging. The most obvious implementation is to perform the merge following a binary tree structure: each node of the tree constitutes a task that merges two ﬁles into one, and these tasks are computed concurrently. Parallelizing the merging of the ROOT ﬁles in this way would grant a potential speed up in the number of merges of</p>
-<p style="text-align:center"><em>S<sub>u</sub></em> = n / (2<sup>log<sub>2</sub>n &minus; log<sub>2</sub>m</sup> &minus; 1) = mn / (n &minus; m),</p>
+\[
+S_u = \frac{n}{2^{\log_2 n - \log_2 m}-1} = \frac{mn}{n-m},
+\]
 <p>where the sequential tree for n = 2<sup>k+1</sup> ﬁles has n &minus; 1 nodes, or binary merge operations, and m = 2<sup>i</sup> is the number of parallel processing elements.</p>
 <p>Nevertheless, real world problems are seldom this perfect. For instance, the number of ﬁles may not be a power of two, and then the shape of the tree does not correspond to that of a full binary tree. In addition, the number of processing units may not be a divisor of the number of ﬁles, and, in that case, it is better performance-wise to distribute the ﬁles such that the leaf operations do not constitute a binary merge.</p>
 <p>Due to the particularities of the <code>Merge()</code> operation in ROOT, in which a collection of ROOT objects is merged into the ﬁrst element of the collection, the full combination of the objects requires n &minus; 1 merges for n ﬁles. With n ﬁles distributed among the m processing units, and each one of the leaves of the tree performing a sequential merge of the ﬁles it was assigned, the potential acceleration factor that we can obtain in the number of merges is:</p>
-<p style="text-align:center"><em>S<sub>u</sub></em> = (n &minus; 1) / ((n + m &minus; 1)/m &minus; m + log<sub>2</sub>m).</p>
+\[
+S_u = \frac{n-1}{\frac{n+m-1}{m}-m+\log_2 m}.
+\]
 <p>However, while merging in a binary tree is theoretically the most eﬃcient option, in practice, the overhead caused by the implementation of a partial binary ﬁle merging operation, and the limitations of the I/O subsystem (opening a ﬁle, creating a ﬁle merger, writing results on disk), make this option less practical. Instead, we adopt a two-step MapReduce<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup> solution where we distribute the ﬁles uniformly between the p workers, and then we perform partial reduction in each of the workers (&quot;greedy&quot; reduce), only to reduce these partial results one last time to obtain the ﬁnal result.</p>
 <p>The theoretical maximum speedup that we can obtain when merging ﬁles in two steps is governed by the equation</p>
-<p style="text-align:center"><em>S<sub>u</sub></em> = n(n &minus; 1) / (n/m + m &minus; 2),</p>
+\[
+S_u = \frac{n(n-1)}{\frac{n}{m}+m-2},
+\]
 <p>where n is the number of items to process and m is the number of processing workers.</p>
 <p>We developed this last solution in a parallel MapReduce implementation of <code>hadd</code>, relying on the multiprocess executor of ROOT, TProcessExecutor<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup>, for merging ROOT objects stored in ROOT ﬁles. Without changing the original user interface, the command remains as simple as:</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#282a36;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash"><span style="color: #6272A4"># Merge 48 histogram files using a 4-worker TProcessExecutor-backed hadd</span>

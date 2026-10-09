@@ -12,6 +12,16 @@
     
     
     <item>
+      <title>Analysis benchmarks for grid and HPC</title>
+      <link>http://xvallspl.github.io/blog/cern/analysisbenchmarks/</link>
+      <pubDate>Wed, 17 Jun 2020 10:06:55 +0200</pubDate>
+      
+      <guid>http://xvallspl.github.io/blog/cern/analysisbenchmarks/</guid>
+      <description>Initial description for the Openlab Student project proposed for the summer of 2020 that I supervised.
+To be updated with the student report and probably a paper once they are available.</description>
+    </item>
+    
+    <item>
       <title>Putting ROOT&#39;s parallel tools to the test</title>
       <link>http://xvallspl.github.io/blog/cern/executor_applications/</link>
       <pubDate>Thu, 24 Oct 2019 16:28:19 +0200</pubDate>
